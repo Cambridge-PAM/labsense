@@ -1,5 +1,6 @@
 import os
 import asyncio
+from datetime import datetime
 from azure.iot.device.aio import IoTHubDeviceClient
 from gpiozero import CPUTemperature
 
@@ -16,7 +17,8 @@ async def main():
     # Send a single message
     print("Sending message...")
     cpu=CPUTemperature()
-    cpu_msg=str({"Temp":cpu.temperature})
+    time_send=datetime.now()
+    cpu_msg=str({"Temp":cpu.temperature, "Time":time_send.strftime('%Y-%m-%d %H:%M:%S')})
     await device_client.send_message(cpu_msg)
     print("Message successfully sent!")
 
