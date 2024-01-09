@@ -1,0 +1,18 @@
+WITH Stage0 AS
+(
+    SELECT
+        event.labId,
+        event.sublabId,
+        event.messageId,
+        event.measureTimestamp,
+        event.EventProcessedUtcTime,
+        event.IoTHub.ConnectionDeviceId AS ConnectionDeviceId,
+        sensorReadings.PropertyName,
+        sensorReadings.PropertyValue
+    FROM [PAM-Living-Labs-IoT-Hub] AS event
+    CROSS APPLY GetRecordProperties(event.sensorReadings) AS sensorReadings
+)
+
+SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS distance INTO [DB1-fumehoodDistance] FROM Stage0 WHERE PropertyName = 'distance'
+SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS light INTO [DB1-fumehoodLight] FROM Stage0 WHERE PropertyName = 'light'
+SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS energy INTO [DB1-energy] FROM Stage0 WHERE PropertyName = 'energy'
