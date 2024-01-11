@@ -2,9 +2,17 @@ import os
 import asyncio
 import time
 import schedule
+import uuid
+import hashlib
 from datetime import datetime
 from azure.iot.device.aio import IoTHubDeviceClient
+from azure.iot.device import Message
 from gpiozero import CPUTemperature
+
+def create_uuid(val1,val2,val3):
+    concat_string=str(val1)+str(val2)+str(val3)
+    hex_string = hashlib.md5(concat_string.encode("UTF-8")).hexdigest()
+    return uuid.UUID(hex=hex_string)
 
 async def main():
     # Fetch the connection string from an environment variable
@@ -15,10 +23,17 @@ async def main():
     await device_client.connect()
 
     # Send a message
-    cpu=CPUTemperature()
+    labID=1
+    sublabID=3
+    electricity=CPUTemperature()
+    electricity=electricity.temperature
     time_send=datetime.now()
-    cpu_msg=str({"Temp":cpu.temperature, "Time":time_send.strftime('%Y-%m-%d %H:%M:%S')})
-    await device_client.send_message(cpu_msg)
+    
+    msg_output='electricity'
+    msg_id=str(create_uuid(time_send,labID,sublabID))
+    msg_payload=str({"labId":labID,"sublabId":sublabID,"sensorReadings":{"electricity":electricity}, "measureTimestamp":time_send.strftime('%Y-%m-%d %H:%M:%S')})
+    msg=Message(msg_payload,message_id=msg_id,output_name=msg_output)
+    await device_client.send_message(msg)
     print("Message successfully sent!")
 
     await device_client.shutdown()

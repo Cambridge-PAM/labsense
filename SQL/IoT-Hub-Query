@@ -3,7 +3,7 @@ WITH Stage0 AS
     SELECT
         event.labId,
         event.sublabId,
-        event.messageId,
+        event.IoTHub.MessageId AS messageId,
         event.measureTimestamp,
         event.EventProcessedUtcTime,
         event.IoTHub.ConnectionDeviceId AS ConnectionDeviceId,
@@ -13,6 +13,8 @@ WITH Stage0 AS
     CROSS APPLY GetRecordProperties(event.sensorReadings) AS sensorReadings
 )
 
-SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS distance INTO [DB1-fumehoodDistance] FROM Stage0 WHERE PropertyName = 'distance'
-SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS light INTO [DB1-fumehoodLight] FROM Stage0 WHERE PropertyName = 'light'
-SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS energy INTO [DB1-energy] FROM Stage0 WHERE PropertyName = 'energy'
+SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS distance INTO [fumehoodDistance] FROM Stage0 WHERE PropertyName = 'distance'
+SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS light INTO [fumehoodLight] FROM Stage0 WHERE PropertyName = 'light'
+SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS energy INTO [electricity] FROM Stage0 WHERE PropertyName = 'electricity'
+SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS volume INTO [water] FROM Stage0 WHERE PropertyName = 'water'
+SELECT messageId, labId, sublabId, ConnectionDeviceId AS deviceId, measureTimestamp, EventProcessedUtcTime AS receiveTimestamp, PropertyValue AS strain INTO [gloves] FROM Stage0 WHERE PropertyName = 'gloves'
