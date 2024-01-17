@@ -176,8 +176,7 @@ def create_uuid(val1,val2,val3):
 
 async def main():
     #import order sheet to be read, define as "df"
-    ord = pd.read_excel("C:\\Users\\micha\\University of Cambridge\\User_MET_PAM - Documents\\General\\General & Lab Admin\\Orders\\Evans Group Ordering Sheet.xlsx")
-    full=ord.info
+    ord = pd.read_excel("/home/labsense1/Documents/Evans Group Ordering Sheet.xlsx")
 
     #filter full sheet to retain only those with an entry in "CAS Number" column, define as "ord_chem"
     ord_chem = ord[ord["CAS Number"].notnull()]
@@ -220,7 +219,7 @@ async def main():
 
         await device_client.shutdown()
 
-        time.sleep(2)
+        time.sleep(10)
 
 def job():
     print("Job started")
