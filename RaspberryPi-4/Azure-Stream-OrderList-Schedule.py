@@ -175,29 +175,28 @@ def create_uuid(val1,val2,val3):
     return uuid.UUID(hex=hex_string)
 
 async def main():
-    # Do ChemInventory processing
-    for key, value in gsk_2016.items():
-        ci = req.post("https://app.cheminventory.net/api/search/execute",
-                    json = {"authtoken": os.getenv("CHEMINVENTORY_CONNECTION_STRING"),
-                            "inventory": 873,
-                            "type": "cas",
-                            "contents": value})
-        ci_json_raw = ci.json()
-        ci_json_data = pd.json_normalize(ci_json_raw ['data']['containers'])
-        ci_df = pd.DataFrame(ci_json_data)
+    #import order sheet to be read, define as "df"
+    ord = pd.read_excel("C:\\Users\\micha\\University of Cambridge\\User_MET_PAM - Documents\\General\\General & Lab Admin\\Orders\\Evans Group Ordering Sheet.xlsx")
+    full=ord.info
 
-        if ci_df.empty:
-            print(f"No records for {key}") #escape to allow for a null return
+    #filter full sheet to retain only those with an entry in "CAS Number" column, define as "ord_chem"
+    ord_chem = ord[ord["CAS Number"].notnull()]
+
+    #filter CAS-restricted list to columns of use ("Full Name", "Volume/Weight/Size", "Unit", "Number", "CAS Number", "Date ordered"), define as "chemlist_red"
+    ord_chem_red = ord_chem.iloc[:, [0, 3, 4, 7, 8, 16]]
+    print(ord_chem_red)
+
+    for key, value in gsk_2016.items():
+        ord_chem_cas = ord_chem_red.loc[ord_chem_red["CAS Number"]==value]
+        if ord_chem_cas.empty:
+            print(f"No records for {key}")
             temp_sum=0
         else:
-            ci_df_real = ci_df.loc[ci_df["location"]!=527895] #remove any entries in "Missing - Stockcheck Only" location
-            if ci_df_real.empty:
-                print(f"No records for {key}") #second escape if null return after filtering
-                temp_sum=0
-            else:
-                temp=pd.to_numeric(ci_df_real['size']) # convert string to float
-                temp_sum=temp.sum()
-                print(f"Total volume for {key} is {temp_sum}")
+            ord_chem_cas = ord_chem_cas.astype({'Volume/Weight/Size':'float', 'Number':'float'})
+            ord_chem_cas["Total Volume (L)"] = (ord_chem_cas["Volume/Weight/Size"]*ord_chem_cas["Number"])
+            temp=ord_chem_cas['Total Volume (L)']
+            temp_sum=temp.sum()
+            print(f"{key}\n{temp_sum}\n\n")
     
         # Fetch the connection string from an environment variable
         conn_str = os.getenv("IOTHUB_DEVICE_CONNECTION_STRING")
