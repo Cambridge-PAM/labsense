@@ -212,9 +212,9 @@ async def main():
         vol=[str(key),temp_sum]
         time_send=datetime.now()
         
-        msg_output='chem'
+        msg_output='order'
         msg_id=str(create_uuid(time_send,labID,sublabID))
-        msg_payload=str({"labId":labID,"sublabId":sublabID,"sensorReadings":{"chem":vol}, "measureTimestamp":time_send.strftime('%Y-%m-%d %H:%M:%S')})
+        msg_payload=str({"labId":labID,"sublabId":sublabID,"sensorReadings":{"order":vol}, "measureTimestamp":time_send.strftime('%Y-%m-%d %H:%M:%S')})
         msg=Message(msg_payload,message_id=msg_id,output_name=msg_output)
         await device_client.send_message(msg)
         print("Message successfully sent!")

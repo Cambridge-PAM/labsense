@@ -168,6 +168,7 @@ gsk_2016 = {
     "Petroleum Ether":"64742-49-0",
     "Hexanes (Mixed Isomers)":"107-83-5",
 }
+# need to redefine gsk_2016 with waste categories
 
 def create_uuid(val1,val2,val3):
     concat_string=str(val1)+str(val2)+str(val3)
@@ -186,6 +187,7 @@ async def main():
         ci_json_data = pd.json_normalize(ci_json_raw ['data']['containers'])
         ci_df = pd.DataFrame(ci_json_data)
 
+        # format of DataFrame requires header of [wasteCategory, Volume (in L), hp1:hp15, pops] where hp1:hp15 and pops values are either 1 or 0
         if ci_df.empty:
             print(f"No records for {key}") #escape to allow for a null return
             temp_sum=0
@@ -209,12 +211,12 @@ async def main():
         # Send a message
         labID=1
         sublabID=3
-        vol=[str(key),temp_sum]
+        vol=[str(key),temp_sum, hp1, hp1, hp3, hp4, hp5, hp6, hp7, hp8, hp9, hp10, hp11, hp12, hp13, hp14, hp15, pops]
         time_send=datetime.now()
         
-        msg_output='chem'
+        msg_output='waste'
         msg_id=str(create_uuid(time_send,labID,sublabID))
-        msg_payload=str({"labId":labID,"sublabId":sublabID,"sensorReadings":{"chem":vol}, "measureTimestamp":time_send.strftime('%Y-%m-%d %H:%M:%S')})
+        msg_payload=str({"labId":labID,"sublabId":sublabID,"sensorReadings":{"waste":vol}, "measureTimestamp":time_send.strftime('%Y-%m-%d %H:%M:%S')})
         msg=Message(msg_payload,message_id=msg_id,output_name=msg_output)
         await device_client.send_message(msg)
         print("Message successfully sent!")
