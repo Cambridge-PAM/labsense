@@ -195,9 +195,6 @@ def create_uuid(val1,val2,val3):
     hex_string = hashlib.md5(concat_string.encode("UTF-8")).hexdigest()
     return uuid.UUID(hex=hex_string)
 
-def tolitre(dataframe,value,unit):
-    for row in dataframe:
-
 async def main():
     # Do ChemInventory processing
     for key, value in gsk_2016.items():
