@@ -1,4 +1,3 @@
-#import all
 from hx711_multi import HX711
 from time import perf_counter
 import RPi.GPIO as GPIO
