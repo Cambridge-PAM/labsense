@@ -175,9 +175,8 @@ def create_uuid(val1,val2,val3):
     return uuid.UUID(hex=hex_string)
 
 async def main():
-    #import order sheet to be read, define as "df"
+    #import order sheet to be read, define as "df", change path to new local file
     ord = pd.read_excel("C:\\Users\\micha\\University of Cambridge\\User_MET_PAM - Documents\\General\\General & Lab Admin\\Orders\\Evans Group Ordering Sheet.xlsx")
-    full=ord.info
 
     #filter full sheet to retain only those with an entry in "CAS Number" column, define as "ord_chem"
     ord_chem = ord[ord["CAS Number"].notnull()]
