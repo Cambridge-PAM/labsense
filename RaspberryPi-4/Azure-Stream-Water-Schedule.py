@@ -43,6 +43,7 @@ GPIO.add_event_detect(FLOW_SENSOR_GPIO, GPIO.FALLING, callback=countPulse)
 
 def gpio_monitoring():
     while True:
+        global count
         count=0
         time.sleep(1)
         vol=(1000*count)/(FLOW_RATE_FACTOR*60)
