@@ -48,6 +48,7 @@ def gpio_monitoring():
         vol=(1000*count)/(FLOW_RATE_FACTOR*60)
         print(f"The current volume is: {vol} mL")
         count=0
+        global temp_volume_val
         temp_volume_val=vol
 
 # Start the background gpio_monitoring thread
@@ -62,6 +63,7 @@ def total_volume(interval):
         time.sleep(1)
         vol_arr.append(temp_volume_val)
     GPIO.output(LED_GPIO,GPIO.LOW)
+    global total_volume_val
     total_volume_val=np.sum(vol_arr)
     
 async def main():
@@ -69,6 +71,7 @@ async def main():
     labID=1
     sublabID=3
     total_volume(5)
+    global total_volume_val
     water=total_volume_val
     time_send=datetime.now()
     print(f"The summed volume is: {total_volume_val} L")
@@ -93,6 +96,10 @@ async def main():
 def job():
     print("Job started")
     asyncio.run(main())
+    global temp_volume_val
+    temp_volume_val=0
+    global total_volume_val
+    total_volume_val=0
     print("job finished")
 
 if __name__ == "__main__":
