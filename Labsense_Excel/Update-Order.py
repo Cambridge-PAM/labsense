@@ -179,7 +179,7 @@ to_litre={'µl':0.000001,
 
 
 
-df = pd.read_excel("C:\Orders\Evans Group Ordering Sheet.xlsx") #add path ro file name you want to read from
+df = pd.read_excel("read-file-name.xlsx") #add path ro file name you want to read from
 #filter full sheet to retain only those with an entry in "CAS Number" column, define as "ord_chem"
 df = df[df["CAS Number"].notnull()]
 
