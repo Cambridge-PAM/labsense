@@ -26,7 +26,6 @@ ci = req.post("https://app.cheminventory.net/api/search/execute",
                            "type": "cas",
                            "contents": "75-09-2"})
 ci_json_raw = ci.json()
-print(ci_json_raw)
 ci_json_data = pd.json_normalize(ci_json_raw ['data']['containers'])
 
 ci_df = pd.DataFrame(ci_json_data)
