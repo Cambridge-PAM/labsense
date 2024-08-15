@@ -32,11 +32,12 @@ async def main():
                 parity=serial.PARITY_ODD,
                 stopbits=serial.STOPBITS_ONE,
                 bytesize=serial.SEVENBITS,
-                timeout=20
+                timeout=30
                 )
         #Clear any data sitting in balance output buffer (likely not required, but ensures clear starting point)
         ser.reset_output_buffer
 
+        #User places container on balance and presses "print" button within timeout to send weight
         #Wait for data from balance, decode from bytes to unicode, then split output into "number" and "unit" strings
         while 1:
                 x=ser.readline()
