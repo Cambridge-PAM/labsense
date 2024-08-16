@@ -7,7 +7,7 @@ import socket
 import subprocess 
 
 email_user = "labsenseip@gmail.com" 
-email_password = "cqxktvjfzhejnvzj"  
+email_password = "xxxx" #application-specific password created through gmail  
 email_send = "labsense.project@gmail.com" 
 subject = "IP address update" 
 
