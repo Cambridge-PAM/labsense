@@ -67,7 +67,7 @@ def insert_sql_water(labId, sublabId, water, timestamp):
 
 def insert_sql_fumehood(labId,sublabId,distance,light,airflow,timestamp):
     if distance is None: #ensures distance isn't null before inserting into table
-        distance = 0.0
+        distance=0.0
     if light is None: #ensures light isn't null before inserting into table
         light=0.0
     if airflow is None: #ensures airflow isn't null before inserting into table
@@ -122,7 +122,6 @@ def on_connect(client, userdata, flags, rc):
     for topic in TOPICS:    
         client.subscribe(topic)
  
-
 def on_message(client, userdata, msg): 
     try: 
         print(msg.payload.decode('utf-8') ) #view the message being sent, used for debugging and can be removed
