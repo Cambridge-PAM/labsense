@@ -44,11 +44,10 @@ async def main():
     labID=1
     sublabID=3
     time_send=datetime.now()
-    while running:
-        distance = tof.get_distance() #in mm
-        ltr559.update_sensor()
-        lux = ltr559.get_lux()
-        airflow=0.0
+    distance = tof.get_distance() #in mm
+    ltr559.update_sensor()
+    lux = ltr559.get_lux()
+    airflow=0.0
     
     print(f"The fumehood measurements at {time_send} are: {distance} mm, {lux} lux and {airflow} flow.")
     # Send a message
@@ -64,7 +63,7 @@ def job():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    schedule.every(5).minutes.do(job)
+    schedule.every(1).minutes.do(job)
     while True:
         schedule.run_pending()
         time.sleep(1)
