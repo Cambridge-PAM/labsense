@@ -4,8 +4,6 @@ import schedule
 import time
 import numpy as np
 from datetime import datetime
-import signal
-import sys
 import VL53L1X # distance sensor
 from ltr559 import LTR559 # light & proximity sensor
 import paho.mqtt.publish as publish
@@ -34,17 +32,6 @@ tof.start_ranging(1)  # Start ranging
                       # 1 = Short Range
                       # 2 = Medium Range
                       # 3 = Long Range
-
-running = True
-def exit_handler(signal, frame):
-    global running
-    running = False
-    tof.stop_ranging()
-    print()
-    sys.exit(0)
-
-# Attach a signal handler to catch SIGINT (Ctrl+C) and exit gracefully
-signal.signal(signal.SIGINT, exit_handler)
 
 ## LIGHT SENSOR
 ltr559 = LTR559()
