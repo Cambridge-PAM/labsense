@@ -140,9 +140,11 @@ def on_message(client, userdata, msg):
             insert_sql_water(labId, sublabId, water_litres, timestamp) #inserts data we just extracted into the table
 
         if "fumehood" in sensorReadings: #checks where the message is coming from
-            distance=sensorReadings.get('distance')
-            light=sensorReadings.get('light')
-            airflow=sensorReadings.get('airflow')
+            temp=sensorReadings['fumehood']
+            distance=temp['distance']
+            light=temp['light']
+            airflow=temp['airflow']
+            print(distance,light,airflow)
             insert_sql_fumehood(labId,sublabId,distance,light,airflow,timestamp)#inserts data we just extracted into the table
 
     except json.JSONDecodeError as e: 
