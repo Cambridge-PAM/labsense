@@ -91,7 +91,7 @@ def job():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    schedule.every(5).minutes.do(job)
+    schedule.every(1).minutes.do(job)
     while True:
         schedule.run_pending()
         time.sleep(1)
