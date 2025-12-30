@@ -1,0 +1,22 @@
+name: labsense
+channels:
+  - defaults
+dependencies:
+  # Python version
+  - python=3.9
+  
+  # Data processing and analysis
+  - pandas
+  - numpy
+  
+  # Database
+  - sqlite
+  
+  # Networking
+  - pip
+  - pip:
+    - paho-mqtt
+    - pyodbc
+    - requests
+    - openpyxl
+    - python-dotenv
