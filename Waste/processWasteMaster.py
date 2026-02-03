@@ -161,10 +161,19 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
 
 
 def create_html_dashboard(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path, out_file: str = None):
-    """Create a small HTML dashboard that embeds the stacked plots and shows simple tables."""
+    """Create a small HTML dashboard that embeds the stacked plots and shows simple tables.
+
+    Filenames are sanitized to avoid leading 'test' prefixes or duplicated 'dashboard' suffixes.
+    """
+    import re
+    # sanitize prefix: remove leading 'test' and any existing 'dashboard' suffix
+    clean_prefix = re.sub(r'(?i)^(test[_-]+)', '', out_prefix)
+    clean_prefix = re.sub(r'(?i)[_-]*dashboard$', '', clean_prefix)
+    clean_prefix = clean_prefix.strip('_-') or out_prefix
+
     plot_dir = Path(plot_dir)
-    plot_q = plot_dir / f"{out_prefix}_by_quarter_stacked.png"
-    plot_y = plot_dir / f"{out_prefix}_by_year_stacked.png"
+    plot_q = plot_dir / f"{clean_prefix}_by_quarter_stacked.png"
+    plot_y = plot_dir / f"{clean_prefix}_by_year_stacked.png"
 
     # Prepare summary tables
     df = res_df.copy()
@@ -220,7 +229,7 @@ def create_html_dashboard(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path,
 
     html_lines += ['</div>', '</body>', '</html>']
 
-    out_file = Path(out_file) if out_file else (plot_dir / f"{out_prefix}_dashboard.html")
+    out_file = Path(out_file) if out_file else (plot_dir / f"{clean_prefix}_dashboard.html")
     with out_file.open('w', encoding='utf-8') as fh:
         fh.write('\n'.join(html_lines))
     print(f'Saved HTML dashboard: {out_file}')
