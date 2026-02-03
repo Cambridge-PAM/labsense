@@ -1,6 +1,9 @@
-from hx711_multi import HX711
+import pytest
 from time import perf_counter
-import RPi.GPIO as GPIO
+
+# Skip this test module if the hardware-specific dependencies are not available
+hx_module = pytest.importorskip('hx711_multi')
+GPIO = pytest.importorskip('RPi.GPIO')
 
 #init GPIO and set GPIO pin mode to BCM numbering
 GPIO.setmode(GPIO.BCM)
@@ -11,7 +14,7 @@ dout_pins = [17]
 weight_multiples = [-3.008] #values to be determined at setup from calibration with known masses. Run strain_cal.py to obtain value for each linked HX711.
 
 #create HX711 instance
-hx711 = HX711(dout_pins=dout_pins,
+hx711 = hx_module.HX711(dout_pins=dout_pins,
               sck_pin=sck_pin,
               channel_A_gain = 128,
               channel_select = 'A',

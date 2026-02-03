@@ -1,35 +1,24 @@
-import importlib.util
-from pathlib import Path
-
-# Load the module directly to avoid package import issues
-module_path = Path(__file__).resolve().parents[1] / "waste2hp.py"
-spec = importlib.util.spec_from_file_location("waste2hp", str(module_path))
-waste2hp = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(waste2hp)
-
+import pytest
 import pandas as pd
+from Waste import waste2hp
 
 
 def test_normalize_code_hp06():
     assert waste2hp.normalize_code('HP06') == 'HP6'
 
 
-def test_normalize_code_space_and_case():
-    assert waste2hp.normalize_code('Hp 6') == 'HP6'
-    assert waste2hp.normalize_code(' hp06 ') == 'HP6'
-
-
-def test_normalize_code_non_hp():
-    assert waste2hp.normalize_code('euh019') == 'EUH019'
+@pytest.mark.parametrize("input_s,expected", [
+    ('Hp 6', 'HP6'),
+    (' hp06 ', 'HP6'),
+    ('euh019', 'EUH019'),
+])
+def test_normalize_code_variants(input_s, expected):
+    assert waste2hp.normalize_code(input_s) == expected
 
 
 def test_parse_codes_splits_and_strips():
     res = waste2hp.parse_codes('H225; H301+H311,EUH019 /H302')
-    assert 'H225' in res
-    assert 'H301' in res
-    assert 'H311' in res
-    assert 'EUH019' in res
-    assert 'H302' in res
+    assert set(['H225', 'H301', 'H311', 'EUH019', 'H302']).issubset(set(res))
 
 
 def test_normalize_codes_list_dedup_and_order():
