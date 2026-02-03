@@ -6,3 +6,5 @@
 # Ignore exported data files
 *.csv
 *.json
+*.png
+*.html
