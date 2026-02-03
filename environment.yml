@@ -11,6 +11,9 @@ dependencies:
   
   # Testing
   - pytest
+
+  # Plotting
+  - matplotlib
   
   # Database
   - sqlite
