@@ -2,3 +2,7 @@
 *.xlsx
 # Ignore Excel temporary lock files (when a workbook is open)
 ~$*.xlsx
+
+# Ignore exported data files
+*.csv
+*.json
