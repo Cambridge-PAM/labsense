@@ -9,6 +9,9 @@ dependencies:
   - pandas
   - numpy
   
+  # Testing
+  - pytest
+  
   # Database
   - sqlite
   

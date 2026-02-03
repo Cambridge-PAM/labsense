@@ -71,10 +71,19 @@ def parse_codes(cell):
 
 
 def normalize_code(s):
-    """Normalize a single hazard/property code to uppercase with no spaces and only alphanumerics."""
+    """Normalize a single hazard/property code to uppercase with no spaces and only alphanumerics.
+    Also normalize HP codes with leading zeros (e.g., 'HP06') to 'HP6'."""
     if not s:
         return ''
     s2 = re.sub(r'[^A-Za-z0-9]', '', str(s)).upper()
+    # Normalize HP codes with leading zeros: HP06 -> HP6
+    m = re.match(r'^(HP)(\d+)$', s2)
+    if m:
+        prefix, num = m.groups()
+        try:
+            return f"{prefix}{int(num)}"
+        except ValueError:
+            return s2
     return s2
 
 
@@ -157,10 +166,27 @@ def main(argv=None):
     if not xlsx.exists():
         raise FileNotFoundError(f"Excel file not found: {xlsx}")
 
-    header_row = detect_header_row(xlsx, args.sheet)
-    print(f"Detected header row: {header_row} (0-based)")
+    # Check sheet presence and provide fallback to '2.1 Waste Form'
+    xlsfile = pd.ExcelFile(xlsx)
+    sheet_to_use = args.sheet
+    if sheet_to_use not in xlsfile.sheet_names:
+        alt = '2.1 Waste Form'
+        if alt in xlsfile.sheet_names:
+            sheet_to_use = alt
+            print(f"Sheet '{args.sheet}' not found - falling back to '{alt}'")
+        else:
+            # as a last resort try to find any sheet containing 'waste form'
+            candidates = [s for s in xlsfile.sheet_names if 'waste form' in s.lower()]
+            if candidates:
+                sheet_to_use = candidates[0]
+                print(f"Sheet '{args.sheet}' not found - using '{sheet_to_use}' instead")
+            else:
+                raise FileNotFoundError(f"Sheet '{args.sheet}' not found. Available sheets: {xlsfile.sheet_names}")
 
-    df = pd.read_excel(xlsx, sheet_name=args.sheet, header=header_row, dtype=str)
+    header_row = detect_header_row(xlsx, sheet_to_use)
+    print(f"Detected header row: {header_row} (0-based) - using sheet '{sheet_to_use}'")
+
+    df = pd.read_excel(xlsx, sheet_name=sheet_to_use, header=header_row, dtype=str)
     cleaned = clean_dataframe(df)
 
     # append date column to each row
