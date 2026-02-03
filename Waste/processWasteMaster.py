@@ -101,7 +101,7 @@ def compute_hp_volume(df: pd.DataFrame) -> pd.DataFrame:
 def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument('--excel', default=str(DEFAULT_PATH), help='Path to Waste Master Excel')
-    p.add_argument('--out', default='NewWasteSheet.xlsx', help='Output Excel filename')
+    p.add_argument('--out', default='WasteSummary.xlsx', help='Output Excel filename')
     args = p.parse_args(argv)
 
     df = load_df(Path(args.excel))
