@@ -124,7 +124,16 @@ def main(
     """
     # configure logging
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
+    # Ensure log directory exists and write logs to a file, overwriting each run
+    log_dir = Path(r"C:\\Labsense\\Logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "lastChemInventoryLog.txt"
+    logging.basicConfig(
+        filename=str(log_file),
+        filemode="w",
+        level=getattr(logging, log_level, logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
     logger = logging.getLogger(__name__)
 
     # Ensure required env var is present when not running in dry-run mode
