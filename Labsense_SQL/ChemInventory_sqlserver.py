@@ -1,7 +1,11 @@
 import json
-from .gsk_enviro_dict_temp import gsk_composite_red, gsk_composite_yellow, gsk_composite_green, gsk_inc_red, gsk_inc_yellow, gsk_inc_green, gsk_voc_red, gsk_voc_yellow, gsk_voc_green, gsk_aqua_red, gsk_aqua_yellow, gsk_aqua_green, gsk_air_red, gsk_air_yellow, gsk_air_green, gsk_health_red, gsk_health_yellow, gsk_health_green
-from .constants import to_litre, gsk_2016
-from .sql_helpers import maybe_insert
+import sys
+from pathlib import Path
+# Add repository root to sys.path to allow absolute imports when running this file directly
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from Labsense_SQL.gsk_enviro_dict_temp import gsk_composite_red, gsk_composite_yellow, gsk_composite_green, gsk_inc_red, gsk_inc_yellow, gsk_inc_green, gsk_voc_red, gsk_voc_yellow, gsk_voc_green, gsk_aqua_red, gsk_aqua_yellow, gsk_aqua_green, gsk_air_red, gsk_air_yellow, gsk_air_green, gsk_health_red, gsk_health_yellow, gsk_health_green
+from Labsense_SQL.constants import to_litre, gsk_2016
+from Labsense_SQL.sql_helpers import maybe_insert
 import os
 from dotenv import load_dotenv
 import datetime 
