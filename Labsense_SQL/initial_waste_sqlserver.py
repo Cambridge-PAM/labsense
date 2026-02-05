@@ -1,34 +1,36 @@
 import pandas as pd
 import pyodbc
 
-#Connection information
+# Connection information
 # Your SQL Server instance
-sqlServerName = 'MSM-FPM-70203\\LABSENSE'
-#Your database
-databaseName = 'labsense'
+sqlServerName = "MSM-FPM-70203\\LABSENSE"
+# Your database
+databaseName = "labsense"
 # Use Windows authentication
-trusted_connection = 'yes'
+trusted_connection = "yes"
 # Encryption
-encryption_pref = 'Optional'
+encryption_pref = "Optional"
 # Connection string information
 connection_string = (
-f"DRIVER={{ODBC Driver 18 for SQL Server}};"
-f"SERVER={sqlServerName};"
-f"DATABASE={databaseName};"
-f"Trusted_Connection={trusted_connection};"
-f"Encrypt={encryption_pref}"
+    f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+    f"SERVER={sqlServerName};"
+    f"DATABASE={databaseName};"
+    f"Trusted_Connection={trusted_connection};"
+    f"Encrypt={encryption_pref}"
 )
- 
+
 from Labsense_SQL.constants import to_litre
+
 # `to_litre` moved to `Labsense_SQL.constants` to avoid duplication.
 
- 
-def insert_sql(hp,volume,datestamp):
+
+def insert_sql(hp, volume, datestamp):
     try:
         # Create a connection
         connection = pyodbc.connect(connection_string)
         cursor = connection.cursor()
-        cursor.execute('''
+        cursor.execute(
+            """
         IF 
         ( NOT EXISTS 
         (select object_id from sys.objects where object_id = OBJECT_ID(N'[chemWaste]') and type = 'U')
@@ -42,15 +44,19 @@ def insert_sql(hp,volume,datestamp):
                 Datestamp DATE
             )
         END
-        ''') # create table
+        """
+        )  # create table
 
-        cursor.execute('''
+        cursor.execute(
+            """
         INSERT INTO chemWaste (HP,Volume,Datestamp)
-        VALUES (?,?,?)''',(hp,volume,datestamp)) #insert into table
+        VALUES (?,?,?)""",
+            (hp, volume, datestamp),
+        )  # insert into table
 
         # cursor.execute('SELECT * FROM chemOrders')
         # rows = cursor.fetchall()
-        
+
         # column_names = [description[0] for description in cursor.description]
         # print(f"{column_names}")
         # for row in rows:
@@ -61,18 +67,25 @@ def insert_sql(hp,volume,datestamp):
     except pyodbc.Error as ex:
         print("An error occurred in SQL Server:", ex)
 
-df = pd.read_excel("Waste Master.xlsx") #file you need to read from, make sure it's in the same folder as this python script
 
-df['Unnamed: 0'] = pd.to_datetime(df['Unnamed: 0']).dt.date
-date_set=df['Unnamed: 0'].unique()
+df = pd.read_excel(
+    "Waste Master.xlsx"
+)  # file you need to read from, make sure it's in the same folder as this python script
+
+df["Unnamed: 0"] = pd.to_datetime(df["Unnamed: 0"]).dt.date
+date_set = df["Unnamed: 0"].unique()
 results = []
- 
+
 for date in date_set:
-    sub_df=df[df['Unnamed: 0'] == date]
-    #print(f"Sub DataFrame for date {date}:")
-    #print(sub_df)
+    sub_df = df[df["Unnamed: 0"] == date]
+    # print(f"Sub DataFrame for date {date}:")
+    # print(sub_df)
     for column in sub_df.columns:
-        if column.startswith('HP') and sub_df[column].dtype in ['int64', 'float64']:
-            column_sum = (sub_df[column] * sub_df["Unnamed: 3"] * sub_df['Unnamed: 4'].map(to_litre)).sum()
-            insert_sql(column,column_sum,date)
+        if column.startswith("HP") and sub_df[column].dtype in ["int64", "float64"]:
+            column_sum = (
+                sub_df[column]
+                * sub_df["Unnamed: 3"]
+                * sub_df["Unnamed: 4"].map(to_litre)
+            ).sum()
+            insert_sql(column, column_sum, date)
             print(f"Sum of column '{column}' for date {date}: {column_sum}")

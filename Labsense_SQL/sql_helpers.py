@@ -1,4 +1,5 @@
 """SQL helper utilities for inserts and toggles."""
+
 from typing import Any, Sequence, Optional
 import os
 import logging
@@ -7,7 +8,9 @@ import pyodbc
 logger = logging.getLogger(__name__)
 
 
-def insert_to_sql(category: str, new_row: Sequence[Any], connection_string: str) -> None:
+def insert_to_sql(
+    category: str, new_row: Sequence[Any], connection_string: str
+) -> None:
     """Insert a row into SQL Server. Caller provides `connection_string`.
 
     Raises pyodbc.Error on failure (logged).
@@ -47,14 +50,23 @@ def insert_to_sql(category: str, new_row: Sequence[Any], connection_string: str)
         raise
 
 
-def maybe_insert(category: str, new_row: Sequence[Any], connection_string: Optional[str] = None, enabled: Optional[bool] = None) -> None:
+def maybe_insert(
+    category: str,
+    new_row: Sequence[Any],
+    connection_string: Optional[str] = None,
+    enabled: Optional[bool] = None,
+) -> None:
     """Insert into SQL only when enabled.
 
     - If `enabled` is None, read from env var `INSERT_TO_SQL`.
     - `connection_string` is required when inserting.
     """
     if enabled is None:
-        enabled = os.getenv('INSERT_TO_SQL', 'True').strip().lower() in ('1', 'true', 'yes')
+        enabled = os.getenv("INSERT_TO_SQL", "True").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
     if not enabled:
         logger.info("Skipping SQL insert for %s (INSERT_TO_SQL disabled).", category)
         return
