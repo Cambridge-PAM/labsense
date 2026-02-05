@@ -8,26 +8,10 @@ import argparse
 import pandas as pd
 import sys
 
-# unit conversion mapping to litres
-to_litre = {
-    'µl': 1e-6,
-    'µL': 1e-6,
-    'ul': 1e-6,
-    'uL': 1e-6,
-    'ml': 1e-3,
-    'mL': 1e-3,
-    'l': 1.0,
-    'L': 1.0,
-    'µg': 1.25e-9,
-    'ug': 1.25e-9,
-    'mg': 1.25e-6,
-    'g': 1.25e-3,
-    'kg': 1.25,
-    'oz': 0.035436875,
-    'lb': 0.56699,
-    'lbs': 0.56699,
-    'gal': 4.54609,
-}
+# Unit conversion mapping to litres (centralized)
+from Labsense_SQL.constants import to_litre
+# `to_litre` moved to `Labsense_SQL.constants` to avoid duplication.
+
 
 DEFAULT_PATH = Path(r"C:\Users\takas\University of Cambridge\MET_PAM - Documents\Lab Management and Safety\Safety\Waste\Waste Master.xlsx")
 

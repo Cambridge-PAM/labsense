@@ -7,37 +7,9 @@ import requests as req
 import pandas as pd
 from openpyxl import Workbook, load_workbook
 
-gsk_2016 = {
-    "Water":"7732-18-5",
-    "Lactic Acid":"50-21-5",
-    "Propionic Acid":"79-09-4",
-    "Methanesulfonic Acid":"75-75-2",
-    "Formic Acid":"64-18-6",
-    "Acetic Acid (Glacial)":"64-19-7",
-    "1,3-Propanediol":"504-63-2",
-    "1-Pentanol":"71-41-0",
-    "2-Ethyl Hexanol":"104-76-7",
-    "1-Heptanol":"111-70-6",
-    "Ethylene Glycol":"107-21-1",
-    "Di(ethylene glycol)":"111-46-6",
-    "Tri(ethylene glycol)":"112-27-6",
-    "1,2-Propanediol":"57-55-6",
-    "Benzyl Alcohol":"100-51-6",
-    "Isoamyl Alcohol":"123-51-3",
-    "1-Octanol":"111-87-5",
-    "Glycerol":"56-81-5",
-    "1,4-Butanediol":"110-63-4",
-    "Cyclohexanol":"108-93-0",
-    "Isobutanol":"78:83:1",
-    "2-Pentanol":"6032-29-7",
-    "1-Hexanol":"111-27-3",
-    "1-Butanol":"71-36-3",
-    "1-Propanol":"71-23-8",
-    "Ethanol":"64-17-5",
-    "2-Butanol":"78-92-2",
-    "2-Propanol":"67-63-0",
-    "t-Amyl Alcohol":"75-85-4",
-    "1,2-Isopropylidene Glycerol":"100-79-8",
+from Labsense_SQL.constants import gsk_2016
+# `gsk_2016` moved to `Labsense_SQL.constants` to avoid duplication.
+
     "t-Butanol":"75-65-0",
     "IMS (Ethanol, Denatured)":"64-17-5",
     "Methanol":"67-56-1",
