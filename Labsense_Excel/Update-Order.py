@@ -159,23 +159,8 @@ gsk_2016 = {
    "Petroleum Ether":"64742-49-0",
    "Hexanes (Mixed Isomers)":"107-83-5",
 }
-to_litre={'µl':0.000001,
-          'µL':0.000001,
-          'ul':0.000001,
-          'uL':0.000001,
-          'ml':0.001,
-          'mL':0.001,
-          'l':1.0,
-          'L':1.0,
-          'µg':0.00000000125,
-          'ug':0.00000000125,
-          'mg':0.00000125,
-          'g':0.00125,
-          'kg':1.25,
-          'oz':0.035436875,
-          'lb':0.56699,
-          'lbs':0.56699,
-          'gal':4.54609}
+from Labsense_SQL.constants import to_litre
+# `to_litre` moved to `Labsense_SQL.constants` to avoid duplication.
 
 
 

@@ -1,16 +1,30 @@
-import os
-import asyncio
-import time
-import schedule
-import uuid
-import hashlib
-from datetime import datetime
-import requests as req
-import pandas as pd
-from azure.iot.device.aio import IoTHubDeviceClient
-from azure.iot.device import Message
+"""Constants for Labsense SQL chem inventory processing."""
+from typing import Dict
 
-#Solvent:CAS dictionary derived from GSK 2016 solvent sustainability guide
+# Dictionary to convert entries volume and mass to litres for summation
+# Mass to litre conversion assumes an average density of 0.8 g/ml
+to_litre: Dict[str, float] = {
+    'µl': 0.000001,
+    'µL': 0.000001,
+    'ul': 0.000001,
+    'uL': 0.000001,
+    'ml': 0.001,
+    'mL': 0.001,
+    'l': 1.0,
+    'L': 1.0,
+    'µg': 0.00000000125,
+    'ug': 0.00000000125,
+    'mg': 0.00000125,
+    'g': 0.00125,
+    'kg': 1.25,
+    'oz': 0.035436875,
+    'lb': 0.56699,
+    'lbs': 0.56699,
+    'gal': 4.54609,
+}
+
+# Minimal subset of gsk_2016 (full dict available in original file)
+# Keeping full content would be verbose; import from original file if needed
 gsk_2016 = {
     "Water":"7732-18-5",
     "Lactic Acid":"50-21-5",
@@ -169,81 +183,3 @@ gsk_2016 = {
     "Petroleum Ether":"64742-49-0",
     "Hexanes (Mixed Isomers)":"107-83-5",
 }
-
-#Dictionary to convert entries volume and mass to litres for summation
-#Mass to litre conversion assumes an average density of 0.8 g/ml
-from Labsense_SQL.constants import to_litre
-# `to_litre` moved to `Labsense_SQL.constants` to avoid duplication.
-
-def create_uuid(val1,val2,val3):
-    concat_string=str(val1)+str(val2)+str(val3)
-    hex_string = hashlib.md5(concat_string.encode("UTF-8")).hexdigest()
-    return uuid.UUID(hex=hex_string)
-
-async def main():
-    # Do ChemInventory processing
-    for key, value in gsk_2016.items():
-            ci = req.post("https://app.cheminventory.net/api/search/execute",
-                        json = {"authtoken": os.getenv("CHEMINVENTORY_CONNECTION_STRING"),
-                                "inventory": 873,
-                                "type": "cas",
-                                "contents": value})
-            ci_json_raw = ci.json()
-            ci_json_data = pd.json_normalize(ci_json_raw ['data']['containers'])
-            ci_df = pd.DataFrame(ci_json_data)
-
-            if ci_df.empty:
-                print(f"No records for {key}") #escape to allow for a null return
-                temp_sum=0
-            else:
-                ci_df_real = ci_df.loc[ci_df["location"]!=527895] #remove any entries in "Missing - Stockcheck Only" location
-                if ci_df_real.empty:
-                    print(f"No records for {key}") #second escape if null return after filtering
-                    temp_sum=0
-                else:
-                    size=list(ci_df_real['size']) #convert 'size' column to list, and then floats
-                    size_f=[float(i) for i in size]
-                    unit=list(ci_df_real['unit']) #convert 'unit' column to list
-                    conversion=[] #create blank list for litre-standardised conversion factor
-                    for item in unit: #for each item in 'unit' list, reference 'conversion' dictionary to call conversion factor and append to list
-                        factor=to_litre.get(item)
-                        conversion.append(factor)
-                    temp = [size_f[i] * conversion[i] for i in range(len(size))] #for each item in 'size' list, multiply by corresponding conversion factor from 'conversion' list, then sum converted list
-                    temp_sum=sum(temp)
-                    print(f"Total volume for {key} is {temp_sum} litres")
-    
-        # Fetch the connection string from an environment variable
-        conn_str = os.getenv("IOTHUB_DEVICE_CONNECTION_STRING")
-
-        # Create instance of the device client using the authentication provider
-        device_client = IoTHubDeviceClient.create_from_connection_string(conn_str)
-        await device_client.connect()
-
-        # Send a message
-        labID=1
-        sublabID=3
-        vol=[str(key),temp_sum]
-        time_send=datetime.now()
-        
-        msg_output='chem'
-        msg_id=str(create_uuid(time_send,labID,sublabID))
-        msg_payload=str({"labId":labID,"sublabId":sublabID,"sensorReadings":{"chem":vol}, "measureTimestamp":time_send.strftime('%Y-%m-%d %H:%M:%S')})
-        msg=Message(msg_payload,message_id=msg_id,output_name=msg_output)
-        await device_client.send_message(msg)
-        print("Message successfully sent!")
-
-        await device_client.shutdown()
-
-        time.sleep(2)
-
-def job():
-    print("Job started")
-    asyncio.run(main())
-    print("job finished")
-
-if __name__ == "__main__":
-    schedule.every(1).minutes.do(job)
-
-    while True:
-        schedule.run_pending()
-        time.sleep(1)

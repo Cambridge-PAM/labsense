@@ -8,3 +8,7 @@
 *.json
 *.png
 *.html
+
+# Ignore Python bytecode and environment files
+*.pyc
+*.env

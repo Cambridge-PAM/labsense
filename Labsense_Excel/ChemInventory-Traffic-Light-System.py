@@ -168,23 +168,8 @@ gsk_2016 = {
 
 #Dictionary to convert entries volume and mass to litres for summation
 #Mass to litre conversion assumes an average density of 0.8 g/ml
-to_litre={'µl':0.000001,
-          'µL':0.000001,
-          'ul':0.000001,
-          'uL':0.000001,
-          'ml':0.001,
-          'mL':0.001,
-          'l':1.0,
-          'L':1.0,
-          'µg':0.00000000125,
-          'ug':0.00000000125,
-          'mg':0.00000125,
-          'g':0.00125,
-          'kg':1.25,
-          'oz':0.035436875,
-          'lb':0.56699,
-          'lbs':0.56699,
-          'gal':4.54609}
+from Labsense_SQL.constants import to_litre
+# `to_litre` moved to `Labsense_SQL.constants` to avoid duplication.
 
 composite_red_list=[]
 composite_yellow_list=[]

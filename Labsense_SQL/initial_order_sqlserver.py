@@ -20,22 +20,8 @@ f"Trusted_Connection={trusted_connection};"
 f"Encrypt={encryption_pref}"
 )
 
-gsk_2016 = {
-   "Water":"7732-18-5",
-   "Lactic Acid":"50-21-5",
-   "Propionic Acid":"79-09-4",
-   "Methanesulfonic Acid":"75-75-2",
-   "Formic Acid":"64-18-6",
-   "Acetic Acid (Glacial)":"64-19-7",
-   "1,3-Propanediol":"504-63-2",
-   "1-Pentanol":"71-41-0",
-   "2-Ethyl Hexanol":"104-76-7",
-   "1-Heptanol":"111-70-6",
-   "Ethylene Glycol":"107-21-1",
-   "Di(ethylene glycol)":"111-46-6",
-   "Tri(ethylene glycol)":"112-27-6",
-   "1,2-Propanediol":"57-55-6",
-   "Benzyl Alcohol":"100-51-6",
+from Labsense_SQL.constants import gsk_2016
+# `gsk_2016` moved to `Labsense_SQL.constants` to avoid duplication.,
    "Isoamyl Alcohol":"123-51-3",
    "1-Octanol":"111-87-5",
    "Glycerol":"56-81-5",
@@ -178,23 +164,8 @@ gsk_2016 = {
    "Petroleum Ether":"64742-49-0",
    "Hexanes (Mixed Isomers)":"107-83-5",
 }
-to_litre={'µl':0.000001,
-          'µL':0.000001,
-          'ul':0.000001,
-          'uL':0.000001,
-          'ml':0.001,
-          'mL':0.001,
-          'l':1.0,
-          'L':1.0,
-          'µg':0.00000000125,
-          'ug':0.00000000125,
-          'mg':0.00000125,
-          'g':0.00125,
-          'kg':1.25,
-          'oz':0.035436875,
-          'lb':0.56699,
-          'lbs':0.56699,
-          'gal':4.54609}
+from Labsense_SQL.constants import to_litre
+# `to_litre` moved to `Labsense_SQL.constants` to avoid duplication.
 
 def insert_sql(cas,name,volume,datestamp):
     try:
