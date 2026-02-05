@@ -127,6 +127,18 @@ def main(
     logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
     logger = logging.getLogger(__name__)
 
+    # Ensure required env var is present when not running in dry-run mode
+    chem_token = os.getenv("CHEMINVENTORY_CONNECTION_STRING")
+    if not chem_token and not dry_run:
+        logger.error(
+            "Missing CHEMINVENTORY_CONNECTION_STRING environment variable. "
+            "Create a .env file with CHEMINVENTORY_CONNECTION_STRING=your_token "
+            "and do NOT commit it to version control."
+        )
+        raise RuntimeError(
+            "CHEMINVENTORY_CONNECTION_STRING is required when not running with dry_run=True"
+        )
+
     # Setup requests session with retries
     session = req.Session()
     from requests.adapters import HTTPAdapter
