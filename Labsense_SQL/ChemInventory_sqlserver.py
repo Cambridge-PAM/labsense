@@ -171,6 +171,12 @@ def main(
 
     skipped_total = 0
 
+    # Decide which SQL connection string to use when inserting.
+    # Prefer an explicit argument, fall back to module-level `connection_string`.
+    sql_conn = connection_string if connection_string else globals().get("connection_string")
+    if not sql_conn:
+        logger.debug("No SQL connection string available; SQL inserts will be skipped unless explicitly provided.")
+
     for key, value in gsk_2016.items():
         logger.info("Processing %s with CAS %s...", key, value)
         try:
@@ -296,32 +302,32 @@ def main(
         maybe_insert(
             "chemComposite",
             [*summary["composite"], record_timestamp],
-            connection_string=connection_string,
+            connection_string=sql_conn,
         )
         maybe_insert(
             "chemIncineration",
             [*summary["incineration"], record_timestamp],
-            connection_string=connection_string,
+            connection_string=sql_conn,
         )
         maybe_insert(
             "chemVOC",
             [*summary["voc"], record_timestamp],
-            connection_string=connection_string,
+            connection_string=sql_conn,
         )
         maybe_insert(
             "chemAquatic",
             [*summary["aquatic"], record_timestamp],
-            connection_string=connection_string,
+            connection_string=sql_conn,
         )
         maybe_insert(
             "chemAir",
             [*summary["air"], record_timestamp],
-            connection_string=connection_string,
+            connection_string=sql_conn,
         )
         maybe_insert(
             "chemHealth",
             [*summary["health"], record_timestamp],
-            connection_string=connection_string,
+            connection_string=sql_conn,
         )
 
     return summary

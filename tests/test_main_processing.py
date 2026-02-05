@@ -38,6 +38,52 @@ def test_main_dry_run_summaries(monkeypatch):
     assert abs(summary['composite'][0] - 0.5) < 1e-9
 
 
+def test_main_uses_module_connection_string(monkeypatch):
+    # Ensure environment and small dataset
+    monkeypatch.setattr(cis, 'gsk_2016', {'MyChem': '75-09-2'})
+    monkeypatch.setattr(cis, 'gsk_composite_red', {'x': '75-09-2'})
+
+    # Fake API response with one valid entry (500 ml)
+    containers = [
+        {'size': '500', 'unit': 'ml', 'location': 1},
+    ]
+
+    class FakeResponse:
+        def __init__(self, data):
+            self._data = data
+        def json(self):
+            return self._data
+        def raise_for_status(self):
+            return None
+
+    fake = FakeResponse({'data': {'containers': containers}})
+
+    def fake_post(self, url, json=None, timeout=None):
+        return fake
+
+    monkeypatch.setattr('requests.sessions.Session.post', fake_post)
+
+    # Capture insert_to_sql calls and ensure connection string passed
+    captured = {}
+
+    def fake_insert(category, new_row, connection_string=None):
+        captured['args'] = (category, tuple(new_row), connection_string)
+
+    monkeypatch.setattr('Labsense_SQL.sql_helpers.insert_to_sql', fake_insert)
+
+    # Ensure a chem inventory token exists so main doesn't raise
+    monkeypatch.setenv('CHEMINVENTORY_CONNECTION_STRING', 'dummy')
+    monkeypatch.setenv('INSERT_TO_SQL', 'True')
+
+    # Run main without providing connection_string argument
+    cis.main(dry_run=False, connection_string=None)
+
+    assert 'args' in captured
+    # connection string should default to module-level `connection_string`
+    assert captured['args'][2] == cis.connection_string
+
+
+
 def test_sizes_to_litres_handles_whitespace_and_units():
     sizes = [' 50 ', '100']
     units = [' ml', 'mL']
