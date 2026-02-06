@@ -8,6 +8,10 @@ from pathlib import Path
 import argparse
 import pandas as pd
 import sys
+from typing import Optional
+
+# Add repository root to sys.path to allow absolute imports when running this file directly
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # Unit conversion mapping to litres (centralized)
 from Labsense_SQL.constants import to_litre
@@ -50,7 +54,7 @@ def compute_hp_volume(df: pd.DataFrame) -> pd.DataFrame:
     if "Date" not in df.columns:
         raise KeyError("No 'Date' column found in Waste Master")
     # normalize dates to date only
-    df["Date"] = pd.to_datetime(df["Date"]).dt.date
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date  # type: ignore
 
     # discover HP columns
     hp_cols = [c for c in df.columns if str(c).upper().startswith("HP")]
@@ -74,14 +78,16 @@ def compute_hp_volume(df: pd.DataFrame) -> pd.DataFrame:
         df.loc[missing_units, "unit_mult"] = 1.0
 
     # ensure Size numeric
-    df["Size_numeric"] = pd.to_numeric(df["Size"], errors="coerce").fillna(0.0)
+    size_numeric = pd.to_numeric(df["Size"], errors="coerce")
+    df["Size_numeric"] = size_numeric.fillna(0.0)  # type: ignore
     df["volume_l"] = df["Size_numeric"] * df["unit_mult"]
 
     results = []
     for date, group in df.groupby("Date"):
         for hp in hp_cols:
             # treat hp column as numeric flag or fraction
-            vals = pd.to_numeric(group[hp], errors="coerce").fillna(0)
+            hp_series = pd.to_numeric(group[hp], errors="coerce")
+            vals = hp_series.fillna(0)  # type: ignore
             # sum volume weighted by presence
             total_l = (vals * group["volume_l"]).sum()
             results.append({"Date": date, "HP Number": hp, "Volume(L)": total_l})
@@ -109,8 +115,8 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
     # Prepare pivot table for HP volumes
     pivot = res_df.copy()
     pivot["Date"] = pd.to_datetime(pivot["Date"])
-    pivot["Quarter"] = pivot["Date"].dt.to_period("Q").astype(str)
-    pivot["Year"] = pivot["Date"].dt.year
+    pivot["Quarter"] = pivot["Date"].dt.to_period("Q").astype(str)  # type: ignore
+    pivot["Year"] = pivot["Date"].dt.year  # type: ignore
 
     # pivot by Quarter and Year
     pivot_q = pivot.pivot_table(
@@ -171,7 +177,10 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
 
 
 def create_html_dashboard(
-    res_df: pd.DataFrame, out_prefix: str, plot_dir: Path, out_file: str = None
+    res_df: pd.DataFrame,
+    out_prefix: str,
+    plot_dir: Path,
+    out_file: Optional[str] = None,
 ):
     """Create a small HTML dashboard that embeds the stacked plots and shows simple tables.
 
@@ -207,14 +216,15 @@ def create_html_dashboard(
 
     # Prepare summary tables
     df = res_df.copy()
-    df["Date"] = pd.to_datetime(df["Date"])
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    date_series = df["Date"]
     q_table = (
-        df.groupby(df["Date"].dt.to_period("Q").astype(str))["Volume(L)"]
+        df.groupby(date_series.dt.to_period("Q").astype(str))["Volume(L)"]  # type: ignore
         .sum()
         .reset_index()
     )
     q_table.columns = ["Quarter", "Volume(L)"]
-    y_table = df.groupby(df["Date"].dt.year)["Volume(L)"].sum().reset_index()
+    y_table = df.groupby(date_series.dt.year)["Volume(L)"].sum().reset_index()  # type: ignore
     y_table.columns = ["Year", "Volume(L)"]
 
     # Use the cleaned prefix for title and header so 'test_' is removed
@@ -274,14 +284,43 @@ def create_html_dashboard(
         )
     html_lines.append("</tbody></table>")
 
+    # Add detailed data table (pivoted: dates as rows, HP as columns)
+    html_lines += [
+        "<h2>Detailed Data</h2>",
+        "<p>Volume (L) by date and HP code:</p>",
+    ]
+
+    # Create pivot table with dates as rows and HP numbers as columns
+    pivot_detail = res_df.pivot_table(
+        index="Date",
+        columns="HP Number",
+        values="Volume(L)",
+        aggfunc="sum",
+        fill_value=0,
+    )
+    pivot_detail = pivot_detail.sort_index()
+
+    # Build HTML table
+    html_lines.append("<table><thead><tr><th>Date</th>")
+    for hp_col in pivot_detail.columns:
+        html_lines.append(f"<th>{hp_col}</th>")
+    html_lines.append("</tr></thead><tbody>")
+
+    for date_idx, row in pivot_detail.iterrows():
+        html_lines.append(f"<tr><td>{date_idx}</td>")
+        for val in row:
+            html_lines.append(f"<td>{val:.3f}</td>")
+        html_lines.append("</tr>")
+    html_lines.append("</tbody></table>")
+
     html_lines += ["</div>", "</body>", "</html>"]
 
-    out_file = (
+    out_path: Path = (
         Path(out_file) if out_file else (plot_dir / f"{clean_prefix}_dashboard.html")
     )
-    with out_file.open("w", encoding="utf-8") as fh:
+    with out_path.open("w", encoding="utf-8") as fh:
         fh.write("\n".join(html_lines))
-    print(f"Saved HTML dashboard: {out_file}")
+    print(f"Saved HTML dashboard: {out_path}")
 
 
 def main(argv=None):
