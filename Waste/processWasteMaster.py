@@ -298,6 +298,54 @@ def create_html_dashboard(
         "    </div>",
     ]
 
+    # HP Codes Reference Table
+    hp_reference = {
+        "HP1": ("Explosive", "Waste which is capable by chemical reaction of producing gas at such a temperature and pressure and at such a speed as to cause damage to the surroundings. Pyrotechnic waste, explosive organic peroxide waste and explosive self-reactive waste is included."),
+        "HP2": ("Oxidizing", "Waste which may, generally by providing oxygen, cause or contribute to the combustion of other materials."),
+        "HP3": ("Flammable", "Flammable liquid waste (flash point below 60°C); flammable pyrophoric liquid/solid waste; flammable solid waste; flammable gaseous waste; water reactive waste; or flammable aerosols, self-heating waste, organic peroxides and self-reactive waste."),
+        "HP4": ("Irritant", "Waste which on application can cause skin irritation or damage to the eye."),
+        "HP5": ("Harmful", "Waste which can cause specific target organ toxicity either from a single or repeated exposure, or which cause acute toxic effects following aspiration."),
+        "HP6": ("Toxic", "Waste which can cause acute toxic effects following oral or dermal administration, or inhalation exposure."),
+        "HP7": ("Carcinogenic", "Waste which induces cancer or increases its incidence."),
+        "HP8": ("Corrosive", "Waste which on application, can cause skin corrosion."),
+        "HP9": ("Infectious", "Waste containing viable micro-organisms or their toxins which are known or reliably believed to cause disease in man or other living organisms."),
+        "HP10": ("Toxic for reproduction", "Waste which has adverse effects on sexual function and fertility in adult males and females, as well as developmental toxicity in the offspring."),
+        "HP11": ("Mutagenic", "Waste which may cause a mutation, that is a permanent change in the amount or structure of the genetic material in a cell."),
+        "HP12": ("Release of an acute toxic gas", "Waste which releases acute toxic gases (Acute Tox. 1, 2 or 3) in contact with water or an acid."),
+        "HP13": ("Sensitizing", "Waste which contains one or more substances known to cause sensitising effects to the skin or the respiratory organs."),
+        "HP14": ("Ecotoxic", "Waste which presents or may present immediate or delayed risks for one or more sectors of the environment."),
+        "HP15": ("Waste capable of exhibiting a hazardous property", "Waste capable of exhibiting a hazardous property listed above not directly displayed by the original waste."),
+    }
+
+    html_lines += [
+        '    <div class="section">',
+        "      <h2>Hazard Property (HP) Codes Reference</h2>",
+        '      <div class="summary">',
+        "        <p>HP codes classify hazardous properties of waste according to European Waste Framework Directive.</p>",
+        "      </div>",
+        "      <table>",
+        "        <thead>",
+        "          <tr>",
+        "            <th style='width: 80px;'>Code</th>",
+        "            <th style='width: 200px;'>Property</th>",
+        "            <th>Description</th>",
+        "          </tr>",
+        "        </thead>",
+        "        <tbody>",
+    ]
+    
+    for hp_code in sorted(hp_reference.keys(), key=lambda x: int(x[2:])):
+        name, description = hp_reference[hp_code]
+        html_lines.append(
+            f"          <tr><td><strong>{hp_code}</strong></td><td>{name}</td><td>{description}</td></tr>"
+        )
+    
+    html_lines += [
+        "        </tbody>",
+        "      </table>",
+        "    </div>",
+    ]
+
     # Quarter section
     html_lines += [
         '    <div class="section">',
