@@ -31,6 +31,24 @@ CONNECTION_STRING = (
 )
 
 
+def kwh_in_context_three(kwh: float) -> dict:
+    """Convert kWh into three equivalents.
+
+    - kettles boiled
+    - EV miles
+    - energy to lift a blue whale by 1 metre
+    """
+    kettle_kwh = 0.1  # Boiling a full kettle
+    ev_miles_per_kwh = 3.0  # Typical EV efficiency
+    whale_lift_kwh = 0.41  # Lift a 150,000 kg blue whale by 1 metre
+
+    return {
+        "kettles_boiled": kwh / kettle_kwh,
+        "ev_miles": kwh * ev_miles_per_kwh,
+        "blue_whale_lifts": kwh / whale_lift_kwh,
+    }
+
+
 def fetch_consumption_data(connection_string: str) -> pd.DataFrame:
     """Fetch daily electricity consumption data from SQL Server."""
     try:
@@ -42,10 +60,10 @@ def fetch_consumption_data(connection_string: str) -> pd.DataFrame:
         """
         df = pd.read_sql(query, connection)
         connection.close()
-        
+
         if not df.empty:
-            df['Datestamp'] = pd.to_datetime(df['Datestamp'])
-            
+            df["Datestamp"] = pd.to_datetime(df["Datestamp"])
+
         return df
     except pyodbc.Error as ex:
         print(f"Error fetching data: {ex}")
@@ -66,61 +84,80 @@ def create_plots(df: pd.DataFrame, plot_dir: Path):
 
     plot_dir = Path(plot_dir)
     plot_dir.mkdir(parents=True, exist_ok=True)
-    
+
     plot_files = {}
 
     # Filter to last year only
     one_year_ago = datetime.now() - timedelta(days=365)
-    df_last_year = df[df['Datestamp'] >= one_year_ago].copy()
-    
+    df_last_year = df[df["Datestamp"] >= one_year_ago].copy()
+
     if df_last_year.empty:
         print("No data in the last year")
         return {}
 
     # Sort by date for plotting
-    df_sorted = df_last_year.sort_values('Datestamp')
+    df_sorted = df_last_year.sort_values("Datestamp")
 
     # Create daily consumption trend plot (last year only)
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.plot(df_sorted['Datestamp'], df_sorted['Esum'], 
-            marker='o', linestyle='-', linewidth=2, markersize=4, color='#3498db')
-    ax.set_xlabel('Date', fontsize=12)
-    ax.set_ylabel('Daily Consumption (kWh)', fontsize=12)
-    ax.set_title('Daily Electricity Consumption Trends (Last Year)', fontsize=14, fontweight='bold')
+    ax.plot(
+        df_sorted["Datestamp"],
+        df_sorted["Esum"],
+        marker="o",
+        linestyle="-",
+        linewidth=2,
+        markersize=4,
+        color="#3498db",
+    )
+    ax.set_xlabel("Date", fontsize=12)
+    ax.set_ylabel("Daily Consumption (kWh)", fontsize=12)
+    ax.set_title(
+        "Daily Electricity Consumption Trends (Last Year)",
+        fontsize=14,
+        fontweight="bold",
+    )
     ax.grid(True, alpha=0.3)
-    
+
     # Format x-axis dates
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
     plt.xticks(rotation=45)
-    
+
     plt.tight_layout()
     daily_plot = plot_dir / "electricity_consumption_trends.png"
-    plt.savefig(daily_plot, dpi=150, bbox_inches='tight')
+    plt.savefig(daily_plot, dpi=150, bbox_inches="tight")
     plt.close()
-    plot_files['daily'] = daily_plot.name
+    plot_files["daily"] = daily_plot.name
     print(f"Created plot: {daily_plot}")
 
     # Create monthly consumption plot
     df_monthly = df_sorted.copy()
-    df_monthly['YearMonth'] = df_monthly['Datestamp'].dt.to_period('M')
-    monthly_data = df_monthly.groupby('YearMonth')['Esum'].sum().reset_index()
-    monthly_data['YearMonth'] = monthly_data['YearMonth'].astype(str)
-    
+    df_monthly["YearMonth"] = df_monthly["Datestamp"].dt.to_period("M")
+    monthly_data = df_monthly.groupby("YearMonth")["Esum"].sum().reset_index()
+    monthly_data["YearMonth"] = monthly_data["YearMonth"].astype(str)
+
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.bar(range(len(monthly_data)), monthly_data['Esum'], 
-           color='#3498db', alpha=0.8, edgecolor='#2c3e50', linewidth=1.5)
-    ax.set_xlabel('Month', fontsize=12)
-    ax.set_ylabel('Monthly Consumption (kWh)', fontsize=12)
-    ax.set_title('Monthly Electricity Consumption (Last Year)', fontsize=14, fontweight='bold')
+    ax.bar(
+        range(len(monthly_data)),
+        monthly_data["Esum"],
+        color="#3498db",
+        alpha=0.8,
+        edgecolor="#2c3e50",
+        linewidth=1.5,
+    )
+    ax.set_xlabel("Month", fontsize=12)
+    ax.set_ylabel("Monthly Consumption (kWh)", fontsize=12)
+    ax.set_title(
+        "Monthly Electricity Consumption (Last Year)", fontsize=14, fontweight="bold"
+    )
     ax.set_xticks(range(len(monthly_data)))
-    ax.set_xticklabels(monthly_data['YearMonth'], rotation=45, ha='right')
-    ax.grid(True, alpha=0.3, axis='y')
-    
+    ax.set_xticklabels(monthly_data["YearMonth"], rotation=45, ha="right")
+    ax.grid(True, alpha=0.3, axis="y")
+
     plt.tight_layout()
     monthly_plot = plot_dir / "electricity_consumption_monthly.png"
-    plt.savefig(monthly_plot, dpi=150, bbox_inches='tight')
+    plt.savefig(monthly_plot, dpi=150, bbox_inches="tight")
     plt.close()
-    plot_files['monthly'] = monthly_plot.name
+    plot_files["monthly"] = monthly_plot.name
     print(f"Created plot: {monthly_plot}")
 
     return plot_files
@@ -141,24 +178,27 @@ def create_html_dashboard(
 
     # Calculate statistics
     if not df.empty:
-        total_consumption = df['Esum'].sum()
-        avg_consumption = df['Esum'].mean()
-        max_consumption = df['Esum'].max()
-        min_consumption = df['Esum'].min()
-        max_date = df.loc[df['Esum'].idxmax(), 'Datestamp'].strftime('%Y-%m-%d')
-        min_date = df.loc[df['Esum'].idxmin(), 'Datestamp'].strftime('%Y-%m-%d')
+        total_consumption = df["Esum"].sum()
+        avg_consumption = df["Esum"].mean()
+        max_consumption = df["Esum"].max()
+        min_consumption = df["Esum"].min()
+        max_date = df.loc[df["Esum"].idxmax(), "Datestamp"].strftime("%Y-%m-%d")
+        min_date = df.loc[df["Esum"].idxmin(), "Datestamp"].strftime("%Y-%m-%d")
         total_days = len(df)
-        
+
+        fun_context = kwh_in_context_three(total_consumption)
+
         # Calculate monthly averages
         df_monthly = df.copy()
-        df_monthly['YearMonth'] = df_monthly['Datestamp'].dt.to_period('M')
-        monthly_avg = df_monthly.groupby('YearMonth')['Esum'].mean().reset_index()
-        monthly_avg['YearMonth'] = monthly_avg['YearMonth'].astype(str)
+        df_monthly["YearMonth"] = df_monthly["Datestamp"].dt.to_period("M")
+        monthly_avg = df_monthly.groupby("YearMonth")["Esum"].mean().reset_index()
+        monthly_avg["YearMonth"] = monthly_avg["YearMonth"].astype(str)
     else:
         total_consumption = avg_consumption = max_consumption = min_consumption = 0
         max_date = min_date = "N/A"
         total_days = 0
         monthly_avg = pd.DataFrame()
+        fun_context = {"kettles_boiled": 0, "ev_miles": 0, "blue_whale_lifts": 0}
 
     html_lines = [
         "<!doctype html>",
@@ -232,6 +272,26 @@ def create_html_dashboard(
             f'        <div class="subtext">{min_date}</div>',
             "      </div>",
             "    </div>",
+            '    <div class="section">',
+            "      <h2>Fun Energy Equivalents</h2>",
+            '      <div class="stats-grid">',
+            '        <div class="stat-card teal">',
+            "          <h3>Kettles Boiled</h3>",
+            f'          <div class="value">{fun_context["kettles_boiled"]:.1f}</div>',
+            '          <div class="unit">full kettles</div>',
+            "        </div>",
+            '        <div class="stat-card">',
+            "          <h3>EV Miles</h3>",
+            f'          <div class="value">{fun_context["ev_miles"]:.1f}</div>',
+            '          <div class="unit">miles</div>',
+            "        </div>",
+            '        <div class="stat-card yellow">',
+            "          <h3>Blue Whale Lifts</h3>",
+            f'          <div class="value">{fun_context["blue_whale_lifts"]:.1f}</div>',
+            '          <div class="unit">1 m lifts</div>',
+            "        </div>",
+            "      </div>",
+            "    </div>",
         ]
 
         # Trend section
@@ -240,10 +300,12 @@ def create_html_dashboard(
             "      <h2>Consumption Trends</h2>",
         ]
 
-        if 'daily' in plot_files:
-            html_lines.append(f'      <img src="{plot_files["daily"]}" alt="Daily electricity consumption trends" />')
+        if "daily" in plot_files:
+            html_lines.append(
+                f'      <img src="{plot_files["daily"]}" alt="Daily electricity consumption trends" />'
+            )
         else:
-            html_lines.append('      <p><em>Daily trend plot not available</em></p>')
+            html_lines.append("      <p><em>Daily trend plot not available</em></p>")
 
         html_lines += [
             "    </div>",
@@ -255,10 +317,14 @@ def create_html_dashboard(
             "      <h2>Monthly Consumption</h2>",
         ]
 
-        if 'monthly' in plot_files:
-            html_lines.append(f'      <img src="{plot_files["monthly"]}" alt="Monthly electricity consumption" />')
+        if "monthly" in plot_files:
+            html_lines.append(
+                f'      <img src="{plot_files["monthly"]}" alt="Monthly electricity consumption" />'
+            )
         else:
-            html_lines.append('      <p><em>Monthly consumption plot not available</em></p>')
+            html_lines.append(
+                "      <p><em>Monthly consumption plot not available</em></p>"
+            )
 
         html_lines += [
             "    </div>",
@@ -365,7 +431,9 @@ def main():
     df = fetch_consumption_data(connection_string)
 
     if df.empty:
-        print("No data found in database. Please run daily_consumption_sqlserver.py first.")
+        print(
+            "No data found in database. Please run daily_consumption_sqlserver.py first."
+        )
         print("Creating dashboard anyway to show structure...")
 
     print(f"Found {len(df)} records")

@@ -182,9 +182,13 @@ def main(
 
     # Decide which SQL connection string to use when inserting.
     # Prefer an explicit argument, fall back to module-level `connection_string`.
-    sql_conn = connection_string if connection_string else globals().get("connection_string")
+    sql_conn = (
+        connection_string if connection_string else globals().get("connection_string")
+    )
     if not sql_conn:
-        logger.debug("No SQL connection string available; SQL inserts will be skipped unless explicitly provided.")
+        logger.debug(
+            "No SQL connection string available; SQL inserts will be skipped unless explicitly provided."
+        )
 
     for key, value in gsk_2016.items():
         logger.info("Processing %s with CAS %s...", key, value)
