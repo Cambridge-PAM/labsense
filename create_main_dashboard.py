@@ -24,7 +24,7 @@ def scan_dashboards(plot_dir: Path) -> List[Dict[str, str]]:
             {
                 "name": name,
                 "file": html_file.name,
-                "path": str(html_file.relative_to(plot_dir)),
+                "path": html_file.name,  # Use filename only for relative links
             }
         )
 
