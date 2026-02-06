@@ -230,7 +230,9 @@ def create_html_dashboard(
 
     # Calculate total volumes and HP code statistics
     total_volume = res_df["Volume(L)"].sum()
-    hp_codes = res_df.groupby("HP Number")["Volume(L)"].sum().sort_values(ascending=False)
+    hp_codes = (
+        res_df.groupby("HP Number")["Volume(L)"].sum().sort_values(ascending=False)
+    )
     most_common_hp = hp_codes.index[0] if len(hp_codes) > 0 else "N/A"
     most_common_volume = hp_codes.iloc[0] if len(hp_codes) > 0 else 0
 
@@ -301,11 +303,13 @@ def create_html_dashboard(
         '    <div class="section">',
         "      <h2>Quarterly Analysis</h2>",
     ]
-    
+
     if plot_q and Path(plot_q).exists():
-        html_lines.append(f'      <img src="{Path(plot_q).name}" alt="Waste by Quarter (stacked by HP)" />')
+        html_lines.append(
+            f'      <img src="{Path(plot_q).name}" alt="Waste by Quarter (stacked by HP)" />'
+        )
     else:
-        html_lines.append('      <p><em>Quarter plot not available</em></p>')
+        html_lines.append("      <p><em>Quarter plot not available</em></p>")
 
     html_lines += [
         "      <h3>Quarterly Totals</h3>",
@@ -330,11 +334,13 @@ def create_html_dashboard(
         '    <div class="section">',
         "      <h2>Annual Analysis</h2>",
     ]
-    
+
     if plot_y and Path(plot_y).exists():
-        html_lines.append(f'      <img src="{Path(plot_y).name}" alt="Waste by Year (stacked by HP)" />')
+        html_lines.append(
+            f'      <img src="{Path(plot_y).name}" alt="Waste by Year (stacked by HP)" />'
+        )
     else:
-        html_lines.append('      <p><em>Year plot not available</em></p>')
+        html_lines.append("      <p><em>Year plot not available</em></p>")
 
     html_lines += [
         "      <h3>Annual Totals</h3>",
@@ -393,7 +399,7 @@ def create_html_dashboard(
         for val in row:
             html_lines.append(f"            <td>{val:.3f}</td>")
         html_lines.append("          </tr>")
-    
+
     html_lines += [
         "        </tbody>",
         "      </table>",
