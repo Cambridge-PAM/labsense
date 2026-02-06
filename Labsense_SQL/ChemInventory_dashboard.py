@@ -101,14 +101,14 @@ def create_plots(data: Dict[str, pd.DataFrame], plot_dir: Path):
         # Convert Timestamp to datetime
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
 
-        # Create figure with two subplots
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+        # Create figure with single subplot for stacked volume
+        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 
-        # Plot 1: Stacked area chart
-        ax1.fill_between(
+        # Stacked area chart
+        ax.fill_between(
             df["Timestamp"], 0, df["RedVol"], label="Red", color="#e74c3c", alpha=0.7
         )
-        ax1.fill_between(
+        ax.fill_between(
             df["Timestamp"],
             df["RedVol"],
             df["RedVol"] + df["YellowVol"],
@@ -116,7 +116,7 @@ def create_plots(data: Dict[str, pd.DataFrame], plot_dir: Path):
             color="#f39c12",
             alpha=0.7,
         )
-        ax1.fill_between(
+        ax.fill_between(
             df["Timestamp"],
             df["RedVol"] + df["YellowVol"],
             df["RedVol"] + df["YellowVol"] + df["GreenVol"],
@@ -124,26 +124,13 @@ def create_plots(data: Dict[str, pd.DataFrame], plot_dir: Path):
             color="#27ae60",
             alpha=0.7,
         )
-        ax1.set_xlabel("Date")
-        ax1.set_ylabel("Volume (L)")
-        ax1.set_title(f"{display_name} - Volume by Category (Stacked)")
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Volume (L)")
+        ax.set_title(f"{display_name} - Volume by Category (Stacked)")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
         fig.autofmt_xdate()
-
-        # Plot 2: Individual lines
-        ax2.plot(df["Timestamp"], df["RedVol"], "o-", label="Red", color="#e74c3c")
-        ax2.plot(
-            df["Timestamp"], df["YellowVol"], "s-", label="Yellow", color="#f39c12"
-        )
-        ax2.plot(df["Timestamp"], df["GreenVol"], "^-", label="Green", color="#27ae60")
-        ax2.set_xlabel("Date")
-        ax2.set_ylabel("Volume (L)")
-        ax2.set_title(f"{display_name} - Volume Trends by Category")
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-        ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
 
         plt.tight_layout()
 
