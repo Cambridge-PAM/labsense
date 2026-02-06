@@ -186,7 +186,7 @@ def create_html_dashboard(
         min_date = df.loc[df["Esum"].idxmin(), "Datestamp"].strftime("%Y-%m-%d")
         total_days = len(df)
 
-        fun_context = kwh_in_context_three(total_consumption)
+        fun_context = kwh_in_context_three(avg_consumption)
 
         # Calculate monthly averages
         df_monthly = df.copy()
@@ -273,22 +273,25 @@ def create_html_dashboard(
             "      </div>",
             "    </div>",
             '    <div class="section">',
-            "      <h2>Fun Energy Equivalents</h2>",
+            "      <h2>Fun Energy Equivalents (Average Daily)</h2>",
+            '      <div class="summary">',
+            f"        <p>Based on average daily consumption of <strong>{avg_consumption:.1f} kWh/day</strong></p>",
+            "      </div>",
             '      <div class="stats-grid">',
             '        <div class="stat-card teal">',
             "          <h3>Kettles Boiled</h3>",
             f'          <div class="value">{fun_context["kettles_boiled"]:.1f}</div>',
-            '          <div class="unit">full kettles</div>',
+            '          <div class="unit">full kettles per day</div>',
             "        </div>",
             '        <div class="stat-card">',
             "          <h3>EV Miles</h3>",
             f'          <div class="value">{fun_context["ev_miles"]:.1f}</div>',
-            '          <div class="unit">miles</div>',
+            '          <div class="unit">miles per day</div>',
             "        </div>",
             '        <div class="stat-card yellow">',
             "          <h3>Blue Whale Lifts</h3>",
             f'          <div class="value">{fun_context["blue_whale_lifts"]:.1f}</div>',
-            '          <div class="unit">1 m lifts</div>',
+            '          <div class="unit">1 m lifts per day</div>',
             "        </div>",
             "      </div>",
             "    </div>",
