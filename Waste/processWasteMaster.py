@@ -2,6 +2,14 @@
 
 Reads the Waste Master Excel (defaults to the path used previously), computes per-date
 volume totals for each HP1..HP15 column in litres, and writes a summary workbook.
+
+Visualization Strategy:
+- TOTAL VOLUME charts show the actual unduplicated waste volume received per period
+- ALLOCATION BREAKDOWN charts show what percentage of total waste was assigned to each HP code
+
+This approach clarifies that waste volumes are not double-counted. When a single waste entry
+is allocated to multiple HP codes (because it exhibits multiple hazardous properties), the
+allocation breakdown charts show the proportions, while total charts show the true volume received.
 """
 
 from pathlib import Path
@@ -112,13 +120,19 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
     plot_dir = Path(plot_dir)
     plot_dir.mkdir(parents=True, exist_ok=True)
 
-    # Prepare pivot table for HP volumes
+    # Prepare pivot tables for HP volumes
     pivot = res_df.copy()
     pivot["Date"] = pd.to_datetime(pivot["Date"])
     pivot["Quarter"] = pivot["Date"].dt.to_period("Q").astype(str)  # type: ignore
     pivot["Year"] = pivot["Date"].dt.year  # type: ignore
 
-    # pivot by Quarter and Year
+    # Total waste volume per period (sum across all HP codes for that period)
+    total_q = pivot.groupby("Quarter")["Volume(L)"].sum().reset_index()
+    total_q.set_index("Quarter", inplace=True)
+    total_y = pivot.groupby("Year")["Volume(L)"].sum().reset_index()
+    total_y.set_index("Year", inplace=True)
+
+    # Allocated volumes pivot by Quarter and Year
     pivot_q = pivot.pivot_table(
         index="Quarter",
         columns="HP Number",
@@ -134,46 +148,100 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
         fill_value=0,
     )
 
+    # Proportion (percentage) of allocated volume by HP code
+    pivot_q_pct = pivot_q.div(pivot_q.sum(axis=1), axis=0) * 100
+    pivot_y_pct = pivot_y.div(pivot_y.sum(axis=1), axis=0) * 100
+
     # ensure HP order HP1..HP15
     hp_cols = [f"HP{i}" for i in range(1, 16)]
 
-    # Stacked quarter plot
-    present_hps_q = [c for c in hp_cols if c in pivot_q.columns]
-    if present_hps_q:
-        pivot_q = pivot_q[present_hps_q]
-        fig, ax = plt.subplots(figsize=(12, 6))
-        pivot_q.plot(kind="bar", stacked=True, ax=ax, colormap="tab20")
-        ax.set_title("Waste volume by quarter per HP code (stacked)")
+    # 1. Total waste volume by quarter (unduplicated)
+    if len(total_q) > 0:
+        fig, ax = plt.subplots(figsize=(12, 5))
+        total_q["Volume(L)"].plot(
+            kind="bar", ax=ax, color="#3498db", edgecolor="black", linewidth=1.5
+        )
+        ax.set_title("Total Waste Volume by Quarter", fontsize=14, fontweight="bold")
         ax.set_xlabel("Quarter")
         ax.set_ylabel("Volume (L)")
+        ax.grid(axis="y", alpha=0.3)
+        plt.xticks(rotation=45, ha="right")
+        # Add value labels on bars
+        for container in ax.containers:
+            ax.bar_label(container, fmt="%.1f L", padding=3)
+        plt.tight_layout()
+        fq_total = plot_dir / f"{clean_prefix}_total_by_quarter.png"
+        fig.savefig(fq_total)
+        plt.close(fig)
+        print(f"Saved total quarterly volume plot: {fq_total}")
+
+    # 2. HP code allocation breakdown by quarter (100% stacked - proportion)
+    present_hps_q = [c for c in hp_cols if c in pivot_q_pct.columns]
+    if present_hps_q:
+        pivot_q_pct_sel = pivot_q_pct[present_hps_q]
+        fig, ax = plt.subplots(figsize=(12, 6))
+        pivot_q_pct_sel.plot(kind="bar", stacked=True, ax=ax, colormap="tab20")
+        ax.set_title(
+            "Waste Allocation Breakdown by Quarter (% of total)",
+            fontsize=14,
+            fontweight="bold",
+        )
+        ax.set_xlabel("Quarter")
+        ax.set_ylabel("Percentage (%)")
+        ax.set_ylim(0, 100)
         plt.xticks(rotation=45, ha="right")
         plt.legend(title="HP Code", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fqs = plot_dir / f"{clean_prefix}_by_quarter_stacked.png"
         fig.savefig(fqs)
         plt.close(fig)
-        print(f"Saved stacked quarter plot: {fqs}")
+        print(f"Saved HP allocation by quarter plot: {fqs}")
     else:
-        print("No HP columns found for stacked quarter plot")
+        print("No HP columns found for quarterly allocation plot")
 
-    # Stacked year plot
-    present_hps_y = [c for c in hp_cols if c in pivot_y.columns]
-    if present_hps_y:
-        pivot_y = pivot_y[present_hps_y]
-        fig, ax = plt.subplots(figsize=(10, 6))
-        pivot_y.plot(kind="bar", stacked=True, ax=ax, colormap="tab20")
-        ax.set_title("Waste volume by year per HP code (stacked)")
+    # 3. Total waste volume by year (unduplicated)
+    if len(total_y) > 0:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        total_y["Volume(L)"].plot(
+            kind="bar", ax=ax, color="#e74c3c", edgecolor="black", linewidth=1.5
+        )
+        ax.set_title("Total Waste Volume by Year", fontsize=14, fontweight="bold")
         ax.set_xlabel("Year")
         ax.set_ylabel("Volume (L)")
+        ax.grid(axis="y", alpha=0.3)
+        plt.xticks(rotation=0)
+        # Add value labels on bars
+        for container in ax.containers:
+            ax.bar_label(container, fmt="%.1f L", padding=3)
+        plt.tight_layout()
+        fy_total = plot_dir / f"{clean_prefix}_total_by_year.png"
+        fig.savefig(fy_total)
+        plt.close(fig)
+        print(f"Saved total annual volume plot: {fy_total}")
+
+    # 4. HP code allocation breakdown by year (100% stacked - proportion)
+    present_hps_y = [c for c in hp_cols if c in pivot_y_pct.columns]
+    if present_hps_y:
+        pivot_y_pct_sel = pivot_y_pct[present_hps_y]
+        fig, ax = plt.subplots(figsize=(10, 6))
+        pivot_y_pct_sel.plot(kind="bar", stacked=True, ax=ax, colormap="tab20")
+        ax.set_title(
+            "Waste Allocation Breakdown by Year (% of total)",
+            fontsize=14,
+            fontweight="bold",
+        )
+        ax.set_xlabel("Year")
+        ax.set_ylabel("Percentage (%)")
+        ax.set_ylim(0, 100)
         plt.xticks(rotation=0)
         plt.legend(title="HP Code", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fys = plot_dir / f"{clean_prefix}_by_year_stacked.png"
         fig.savefig(fys)
         plt.close(fig)
-        print(f"Saved stacked year plot: {fys}")
+        print(f"Saved HP allocation by year plot: {fys}")
     else:
-        print("No HP columns found for stacked year plot")
+        print("No HP columns found for annual allocation plot")
 
 
 def create_html_dashboard(
@@ -277,7 +345,12 @@ def create_html_dashboard(
         '  <div class="container">',
         '    <div class="header">',
         "      <h1>♻️ Waste Dashboard</h1>",
-        f"      <p>Hazardous waste tracking and analysis • Generated {generated_time}</p>",
+        f"      <p>Hazardous waste tracking and analysis by HP code allocation • Generated {generated_time}</p>",
+        '      <div class="summary" style="margin-top: 20px;">',
+        "        <h3>About This Dashboard</h3>",
+        "        <p>This dashboard tracks hazardous waste volumes received and their allocation across EU hazard property codes (HP1-HP15). Each waste entry may be designated with multiple HP codes if it exhibits multiple hazardous properties.</p>",
+        "        <p><strong>Key Concept:</strong> The <em>Total Volume</em> charts show the actual waste received (unduplicated). The <em>Allocation Breakdown</em> charts show what percentage of that waste was assigned to each HP code. A single waste entry may appear in multiple HP code allocations.</p>",
+        "      </div>",
         "    </div>",
         '    <div class="stats-grid">',
         '      <div class="stat-card">',
@@ -392,14 +465,46 @@ def create_html_dashboard(
     html_lines += [
         '    <div class="section">',
         "      <h2>Quarterly Analysis</h2>",
+        '      <div class="summary">',
+        "        <h3>Understanding the Charts</h3>",
+        "        <p><strong>Total Volume Chart:</strong> Shows the actual waste volume received each quarter (unduplicated).</p>",
+        "        <p><strong>Allocation Breakdown Chart:</strong> Shows what percentage of the total waste was allocated to each HP code. Note: A single waste entry may be attributed to multiple HP codes if it exhibits multiple hazardous properties.</p>",
+        "      </div>",
     ]
 
-    if plot_q and Path(plot_q).exists():
+    # Find and display total quarter volume plot
+    plot_q_total = plot_dir / f"{clean_prefix}_total_by_quarter.png"
+    if not plot_q_total.exists():
+        found = list(plot_dir.glob("*total_by_quarter.png"))
+        plot_q_total = found[0] if found else None
+
+    if plot_q_total and Path(plot_q_total).exists():
+        html_lines.append("      <h3>Total Waste Volume by Quarter</h3>")
         html_lines.append(
-            f'      <img src="{Path(plot_q).name}" alt="Waste by Quarter (stacked by HP)" />'
+            f'      <img src="{Path(plot_q_total).name}" alt="Total waste volume by quarter" />'
         )
     else:
-        html_lines.append("      <p><em>Quarter plot not available</em></p>")
+        html_lines.append("      <p><em>Total volume chart not available</em></p>")
+
+    # Find and display allocation breakdown plot
+    plot_q = plot_dir / f"{clean_prefix}_by_quarter_stacked.png"
+    if not plot_q.exists():
+        alt = plot_dir / f"{out_prefix}_by_quarter_stacked.png"
+        if alt.exists():
+            plot_q = alt
+        else:
+            found = list(plot_dir.glob("*by_quarter_stacked.png"))
+            plot_q = found[0] if found else None
+
+    if plot_q and Path(plot_q).exists():
+        html_lines.append("      <h3>HP Code Allocation Breakdown by Quarter</h3>")
+        html_lines.append(
+            f'      <img src="{Path(plot_q).name}" alt="HP allocation by quarter" />'
+        )
+    else:
+        html_lines.append(
+            "      <p><em>Allocation breakdown chart not available</em></p>"
+        )
 
     html_lines += [
         "      <h3>Quarterly Totals</h3>",
@@ -425,12 +530,39 @@ def create_html_dashboard(
         "      <h2>Annual Analysis</h2>",
     ]
 
-    if plot_y and Path(plot_y).exists():
+    # Find and display total year volume plot
+    plot_y_total = plot_dir / f"{clean_prefix}_total_by_year.png"
+    if not plot_y_total.exists():
+        found = list(plot_dir.glob("*total_by_year.png"))
+        plot_y_total = found[0] if found else None
+
+    if plot_y_total and Path(plot_y_total).exists():
+        html_lines.append("      <h3>Total Waste Volume by Year</h3>")
         html_lines.append(
-            f'      <img src="{Path(plot_y).name}" alt="Waste by Year (stacked by HP)" />'
+            f'      <img src="{Path(plot_y_total).name}" alt="Total waste volume by year" />'
         )
     else:
-        html_lines.append("      <p><em>Year plot not available</em></p>")
+        html_lines.append("      <p><em>Total volume chart not available</em></p>")
+
+    # Find and display allocation breakdown plot
+    plot_y = plot_dir / f"{clean_prefix}_by_year_stacked.png"
+    if not plot_y.exists():
+        alt = plot_dir / f"{out_prefix}_by_year_stacked.png"
+        if alt.exists():
+            plot_y = alt
+        else:
+            found = list(plot_dir.glob("*by_year_stacked.png"))
+            plot_y = found[0] if found else None
+
+    if plot_y and Path(plot_y).exists():
+        html_lines.append("      <h3>HP Code Allocation Breakdown by Year</h3>")
+        html_lines.append(
+            f'      <img src="{Path(plot_y).name}" alt="HP allocation by year" />'
+        )
+    else:
+        html_lines.append(
+            "      <p><em>Allocation breakdown chart not available</em></p>"
+        )
 
     html_lines += [
         "      <h3>Annual Totals</h3>",
@@ -455,8 +587,8 @@ def create_html_dashboard(
         '    <div class="section">',
         "      <h2>Detailed Data by HP Code</h2>",
         '      <div class="summary">',
-        "        <h3>About HP Codes</h3>",
-        "        <p>HP codes classify hazardous properties of waste (HP1-HP15), including explosive, flammable, toxic, corrosive, and ecotoxic characteristics.</p>",
+        "        <h3>How Waste is Allocated to HP Codes</h3>",
+        "        <p>Each waste entry in the master ledger specifies quantities for one or more HP codes. The table below shows the allocated volumes per HP code per date. Note that a single waste entry may appear across multiple HP columns if it exhibits multiple hazardous properties. The sum of all HP columns for a given date represents the total waste volume for that date (with potential fractional allocations if a single entry was split across codes).</p>",
         "      </div>",
     ]
 
