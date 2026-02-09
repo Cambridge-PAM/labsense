@@ -27,12 +27,18 @@ from Labsense_SQL.gsk_enviro_dict_temp import (
 from Labsense_SQL.constants import to_litre, gsk_2016
 from Labsense_SQL.sql_helpers import maybe_insert
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 import datetime
 import requests as req
 import pandas as pd
 import logging
 from typing import List, Tuple, Dict, Any, Optional
+
+# Load environment variables from .env file in the repository root
+repo_root = Path(__file__).resolve().parents[1]
+env_path = repo_root / ".env"
+load_dotenv(dotenv_path=env_path)
 
 # Connection information
 # Your SQL Server instance
@@ -72,8 +78,6 @@ air_green_list = []
 health_red_list = []
 health_yellow_list = []
 health_green_list = []
-
-load_dotenv()  # for getting the CHEMINVENTORY_CONNECTION_STRING, add the conncetion string in the .env file. If it doesn't exist, jus create one in the folder
 
 
 def sizes_to_litres(size_list: List[Any], unit_list: List[Any]) -> Tuple[float, int]:

@@ -7,9 +7,9 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from .env file in the same directory as this script
-script_dir = Path(__file__).parent
-env_path = script_dir / ".env"
+# Load environment variables from .env file in the repository root
+repo_root = Path(__file__).resolve().parents[1]
+env_path = repo_root / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # Connection information

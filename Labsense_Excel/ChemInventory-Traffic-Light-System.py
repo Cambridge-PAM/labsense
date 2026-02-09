@@ -1,8 +1,14 @@
 import json
+from pathlib import Path
 from gsk_enviro_dict_temp import gsk_composite_red, gsk_composite_yellow, gsk_composite_green, gsk_inc_red, gsk_inc_yellow, gsk_inc_green, gsk_voc_red, gsk_voc_yellow, gsk_voc_green, gsk_aqua_red, gsk_aqua_yellow, gsk_aqua_green, gsk_air_red, gsk_air_yellow, gsk_air_green, gsk_health_red, gsk_health_yellow, gsk_health_green
 import os
 from dotenv import load_dotenv
-import datetime 
+import datetime
+
+# Load environment variables from .env file in the repository root
+repo_root = Path(__file__).resolve().parents[1]
+env_path = repo_root / ".env"
+load_dotenv(dotenv_path=env_path) 
 import requests as req
 import pandas as pd
 from openpyxl import Workbook, load_workbook
@@ -10,6 +16,7 @@ from openpyxl import Workbook, load_workbook
 from Labsense_SQL.constants import gsk_2016
 # `gsk_2016` moved to `Labsense_SQL.constants` to avoid duplication.
 
+chemical_dict = {
     "t-Butanol":"75-65-0",
     "IMS (Ethanol, Denatured)":"64-17-5",
     "Methanol":"67-56-1",
