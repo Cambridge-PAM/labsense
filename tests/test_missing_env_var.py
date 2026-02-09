@@ -10,4 +10,6 @@ def test_missing_env_var_raises():
         raised = False
     except Exception as e:
         raised = isinstance(e, RuntimeError)
-    assert raised, "Expected RuntimeError when CHEMINVENTORY_CONNECTION_STRING is missing and dry_run=False"
+    assert (
+        raised
+    ), "Expected RuntimeError when CHEMINVENTORY_CONNECTION_STRING is missing and dry_run=False"

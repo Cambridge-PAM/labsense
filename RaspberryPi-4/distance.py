@@ -7,7 +7,8 @@ import signal
 import VL53L1X
 
 
-print("""distance.py
+print(
+    """distance.py
 
 Display the distance read from the sensor.
 
@@ -15,7 +16,8 @@ Uses the "Short Range" timing budget by default.
 
 Press Ctrl+C to exit.
 
-""")
+"""
+)
 
 
 # Open and start the VL53L1X sensor.
@@ -34,10 +36,10 @@ tof.open()
 # tof.set_timing(66000, 70)
 
 tof.start_ranging(1)  # Start ranging
-                      # 0 = Unchanged
-                      # 1 = Short Range
-                      # 2 = Medium Range
-                      # 3 = Long Range
+# 0 = Unchanged
+# 1 = Short Range
+# 2 = Medium Range
+# 3 = Long Range
 
 running = True
 

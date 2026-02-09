@@ -12,6 +12,9 @@ bme = BreakoutBME68X(i2c)
 while True:
     temperature, pressure, humidity, gas, status, _, _ = bme.read()
     heater = "Stable" if status & STATUS_HEATER_STABLE else "Unstable"
-    print("{:0.2f}c, {:0.2f}Pa, {:0.2f}%, {:0.2f} Ohms, Heater: {}".format(
-        temperature, pressure, humidity, gas, heater))
+    print(
+        "{:0.2f}c, {:0.2f}Pa, {:0.2f}%, {:0.2f} Ohms, Heater: {}".format(
+            temperature, pressure, humidity, gas, heater
+        )
+    )
     time.sleep(1.0)
