@@ -11,7 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-env_path = Path(__file__).parent / '.env'
+env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # set up GPIO
@@ -19,7 +19,9 @@ FLOW_SENSOR_GPIO_1 = 4
 FLOW_SENSOR_GPIO_2 = 17
 LED_GPIO = 2
 FLOW_RATE_FACTOR = 5  # value based on the sensor's specification
-MQTT_SERVER = os.getenv('MQTT_SERVER')  # specify the broker address,in this case the IP address of the computer
+MQTT_SERVER = os.getenv(
+    "MQTT_SERVER"
+)  # specify the broker address,in this case the IP address of the computer
 MQTT_PATH = "water"
 
 global count

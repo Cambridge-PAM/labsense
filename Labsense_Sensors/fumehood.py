@@ -12,10 +12,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-env_path = Path(__file__).parent / '.env'
+env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-MQTT_SERVER = os.getenv('MQTT_SERVER')  # specify the broker address,in this case the IP address of the computer
+MQTT_SERVER = os.getenv(
+    "MQTT_SERVER"
+)  # specify the broker address,in this case the IP address of the computer
 MQTT_PATH = "fumehood"
 
 ## DISTANCE SENSOR

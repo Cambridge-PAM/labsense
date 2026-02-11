@@ -12,35 +12,60 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-env_path = Path(__file__).parent / '.env'
+env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # Email Configuration
-email_user = os.getenv('EMAIL_USER')
-email_password = os.getenv('EMAIL_PASSWORD')
-email_send = os.getenv('EMAIL_SEND')
+email_user = os.getenv("EMAIL_USER")
+email_password = os.getenv("EMAIL_PASSWORD")
+email_send = os.getenv("EMAIL_SEND")
 subject = "IP address update"
 
 # WiFi Configuration
-WIFI_SSID = os.getenv('WIFI_SSID')
-WIFI_PASSWORD = os.getenv('WIFI_PASSWORD')
+WIFI_SSID = os.getenv("WIFI_SSID")
+WIFI_PASSWORD = os.getenv("WIFI_PASSWORD")
 
 
 def is_connected_to_wifi():
     """Check if the Raspberry Pi is connected to WiFi"""
     try:
+        # Method 1: Check if wlan0 has an IP address
         result = subprocess.run(
-            ["nmcli", "connection", "show", "--active"],
+            ["ip", "addr", "show", "wlan0"],
             capture_output=True,
             text=True,
             timeout=5,
         )
+        if result.returncode == 0 and "inet " in result.stdout:
+            print("WiFi connection detected via IP address on wlan0")
+            return True
+
+        # Method 2: Try with iwgetid to check connected SSID
+        result = subprocess.run(
+            ["iwgetid", "-r"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            print(f"WiFi connection detected: {result.stdout.strip()}")
+            return True
+
+        # Method 3: Check network connectivity
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", "2", "8.8.8.8"],
+            capture_output=True,
+            timeout=5,
+        )
         if result.returncode == 0:
-            return "wifi" in result.stdout or "wlan0" in result.stdout
+            print("Network connectivity confirmed")
+            return True
+
         return False
     except Exception as e:
         print(f"Error checking WiFi status: {e}")
-        return False
+        # If all checks fail, assume connected and let the script try
+        return True
 
 
 def connect_to_wifi(ssid, password, timeout=30):
