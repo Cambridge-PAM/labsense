@@ -14,13 +14,19 @@ import logging
 from typing import Optional, Tuple
 
 # Configure logging
+# Use local log file in script directory to avoid permission issues
+log_file = Path(__file__).parent / "raspberry_pi_ip.log"
+handlers = [logging.StreamHandler()]
+
+try:
+    handlers.append(logging.FileHandler(log_file))
+except PermissionError:
+    print(f"Warning: Cannot write to log file {log_file}. Logging to console only.")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("/var/log/raspberry_pi_ip.log"),
-    ],
+    handlers=handlers,
 )
 logger = logging.getLogger(__name__)
 
