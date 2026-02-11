@@ -7,16 +7,23 @@ import socket
 import subprocess
 import time
 import sys
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 
-# Configuration
-email_user = "labsenseip@gmail.com"
-email_password = "xxxx"  # application-specific password created through gmail
-email_send = "labsense.project@gmail.com"
+# Load environment variables from .env file
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
+
+# Email Configuration
+email_user = os.getenv('EMAIL_USER')
+email_password = os.getenv('EMAIL_PASSWORD')
+email_send = os.getenv('EMAIL_SEND')
 subject = "IP address update"
 
-# WiFi Configuration - UPDATE THESE WITH YOUR WIFI DETAILS
-WIFI_SSID = "your_wifi_ssid"
-WIFI_PASSWORD = "your_wifi_password"
+# WiFi Configuration
+WIFI_SSID = os.getenv('WIFI_SSID')
+WIFI_PASSWORD = os.getenv('WIFI_PASSWORD')
 
 
 def is_connected_to_wifi():
