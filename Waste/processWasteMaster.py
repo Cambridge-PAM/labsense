@@ -16,10 +16,16 @@ from pathlib import Path
 import argparse
 import pandas as pd
 import sys
+import os
 from typing import Optional
+from dotenv import load_dotenv
 
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# Load environment variables from .env file at repo root
+env_path = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(env_path)
 
 # Unit conversion mapping to litres (centralized)
 from Labsense_SQL.constants import to_litre
@@ -643,6 +649,7 @@ def create_html_dashboard(
 
 
 def main(argv=None):
+    plots_dir_default = os.getenv("PLOTS_DIR", "plots")
     p = argparse.ArgumentParser()
     p.add_argument(
         "--excel", default=str(DEFAULT_PATH), help="Path to Waste Master Excel"
@@ -650,8 +657,8 @@ def main(argv=None):
     p.add_argument("--out", default="Waste.xlsx", help="Output Excel filename")
     p.add_argument(
         "--plot-dir",
-        default="plots",
-        help="Directory to write plots to (default: plots)",
+        default=plots_dir_default,
+        help=f"Directory to write plots to (default: {plots_dir_default})",
     )
     p.add_argument("--no-plots", action="store_true", help="Disable plot generation")
     p.add_argument(

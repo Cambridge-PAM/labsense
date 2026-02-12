@@ -75,7 +75,7 @@ def test_main_uses_module_connection_string(monkeypatch):
 
     # Ensure a chem inventory token exists so main doesn't raise
     monkeypatch.setenv("CHEMINVENTORY_CONNECTION_STRING", "dummy")
-    monkeypatch.setenv("INSERT_TO_SQL", "True")
+    monkeypatch.setenv("CHEMINVENTORY_INSERT_TO_SQL", "True")
 
     # Run main without providing connection_string argument
     cis.main(dry_run=False, connection_string=None)

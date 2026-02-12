@@ -58,17 +58,20 @@ def maybe_insert(
 ) -> None:
     """Insert into SQL only when enabled.
 
-    - If `enabled` is None, read from env var `INSERT_TO_SQL`.
+    - If `enabled` is None, read from env var `CHEMINVENTORY_INSERT_TO_SQL`.
     - `connection_string` is required when inserting.
     """
     if enabled is None:
-        enabled = os.getenv("INSERT_TO_SQL", "True").strip().lower() in (
+        enabled = os.getenv("CHEMINVENTORY_INSERT_TO_SQL", "True").strip().lower() in (
             "1",
             "true",
             "yes",
         )
     if not enabled:
-        logger.info("Skipping SQL insert for %s (INSERT_TO_SQL disabled).", category)
+        logger.info(
+            "Skipping SQL insert for %s (CHEMINVENTORY_INSERT_TO_SQL disabled).",
+            category,
+        )
         return
     if not connection_string:
         logger.warning("Cannot insert %s: no connection string provided.", category)

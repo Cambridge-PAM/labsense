@@ -10,6 +10,7 @@ import logging
 from typing import Optional, Dict, Any
 
 # Configure logging
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 log_file = Path(__file__).parent / "subscriber.log"
 handlers = [logging.StreamHandler()]
 
@@ -19,7 +20,7 @@ except PermissionError:
     print(f"Warning: Cannot write to log file {log_file}. Logging to console only.")
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level, logging.INFO),
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=handlers,
 )

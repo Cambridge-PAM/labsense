@@ -6,10 +6,16 @@ and creates visualizations and an HTML dashboard.
 """
 
 import sys
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# Load environment variables from .env file at repo root
+env_path = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(env_path)
 
 import pyodbc
 import pandas as pd
@@ -292,11 +298,14 @@ def create_html_dashboard(
 
 
 def main():
+    plots_dir_default = os.getenv("PLOTS_DIR", "plots")
     parser = argparse.ArgumentParser(
         description="Generate ChemInventory dashboard from SQL Server"
     )
     parser.add_argument(
-        "--plot-dir", default="plots", help="Directory for plots (default: plots)"
+        "--plot-dir",
+        default=plots_dir_default,
+        help=f"Directory for plots (default: {plots_dir_default})",
     )
     parser.add_argument(
         "--out", help="Output HTML file (default: plots/cheminventory_dashboard.html)"

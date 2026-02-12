@@ -5,7 +5,7 @@ from Labsense_SQL import sql_helpers as sh
 
 def test_maybe_insert_skips_when_disabled():
     # ensure env var disables inserts
-    os.environ["INSERT_TO_SQL"] = "False"
+    os.environ["CHEMINVENTORY_INSERT_TO_SQL"] = "False"
 
     called = {"count": 0}
 
@@ -20,7 +20,7 @@ def test_maybe_insert_skips_when_disabled():
 
 
 def test_maybe_insert_calls_when_enabled():
-    os.environ["INSERT_TO_SQL"] = "True"
+    os.environ["CHEMINVENTORY_INSERT_TO_SQL"] = "True"
     called = {"args": None}
 
     def fake_insert(category, new_row, connection_string=None):

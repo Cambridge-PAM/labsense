@@ -7,10 +7,16 @@ This generates an HTML landing page that provides links to:
 - Other analytics dashboards
 """
 
+import os
 from pathlib import Path
 import argparse
 from datetime import datetime
 from typing import List, Dict
+from dotenv import load_dotenv
+
+# Load environment variables from .env file at repo root
+env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(env_path)
 
 
 def scan_dashboards(plot_dir: Path) -> List[Dict[str, str]]:
@@ -120,11 +126,12 @@ def create_main_dashboard(plot_dir: Path, out_file: Path = None):
 
 
 def main():
+    plots_dir_default = os.getenv("PLOTS_DIR", "plots")
     parser = argparse.ArgumentParser(description="Create main Labsense dashboard")
     parser.add_argument(
         "--plot-dir",
-        default="plots",
-        help="Directory containing dashboard files (default: plots)",
+        default=plots_dir_default,
+        help=f"Directory containing dashboard files (default: {plots_dir_default})",
     )
     parser.add_argument("--out", help="Output HTML file (default: plots/index.html)")
 

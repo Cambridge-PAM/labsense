@@ -9,6 +9,7 @@
 *.png
 *.html
 
-# Ignore Python bytecode and environment files
+# Ignore Python bytecode, environment and log files
 *.pyc
 *.env
+*.log

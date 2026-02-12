@@ -81,7 +81,7 @@ CHEMINVENTORY_CONNECTION_STRING=your_cheminventory_token
 EMONCMS_API_KEY=your_emoncms_api_key
 
 # SQL Server Options
-INSERT_TO_SQL=True              # Toggle SQL Server inserts (default: True)
+CHEMINVENTORY_INSERT_TO_SQL=True # Toggle ChemInventory SQL Server inserts (default: True)
 LOG_LEVEL=INFO                  # Logging level (default: INFO)
 ```
 
