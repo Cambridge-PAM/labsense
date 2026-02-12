@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pyodbc
 import pandas as pd
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Tuple
 import re
 
@@ -30,6 +30,20 @@ CONNECTION_STRING = (
     f"Trusted_Connection={TRUSTED_CONNECTION};"
     f"Encrypt={ENCRYPTION_PREF}"
 )
+
+# Lab ID to name mapping
+LAB_NAMES = {1: "Lab -1.025", 2: "Lab -1.041"}
+
+
+def get_lab_display_name(lab_id: int) -> str:
+    """Get display name for a lab ID."""
+    return LAB_NAMES.get(lab_id, f"Lab {lab_id}")
+
+
+def get_display_label(lab_id: int, sublab_id: int) -> str:
+    """Get formatted display label for a lab/sublab combination."""
+    lab_name = get_lab_display_name(lab_id)
+    return f"{lab_name} - Fumehood {sublab_id}"
 
 
 def fetch_fumehood_data(connection_string: str) -> pd.DataFrame:
@@ -69,6 +83,14 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
     if df.empty:
         return plot_files
 
+    # Filter to last 7 days
+    last_week = datetime.now() - timedelta(days=7)
+    df = df[df["Timestamp"] >= last_week]  # type: ignore[assignment]
+
+    if df.empty:
+        print("No data found in the last 7 days")
+        return plot_files
+
     # Get unique lab/sublab combinations
     lab_sublab_combinations = df[["LabId", "SubLabId"]].drop_duplicates()
 
@@ -87,6 +109,17 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if lab_df.empty:
             continue
 
+        # Count errors (negative values)
+        distance_errors = (lab_df["Distance"] < 0).sum()
+        light_errors = (lab_df["Light"] < 0).sum()
+        total_errors = distance_errors + light_errors
+
+        # Filter to valid data only (non-negative values)
+        plot_df = lab_df[(lab_df["Distance"] >= 0) & (lab_df["Light"] >= 0)]
+
+        if plot_df.empty:
+            continue
+
         # Create figure with two subplots (Distance and Light)
         fig, (ax1, ax2) = plt.subplots(
             2, 1, figsize=(12, 10), sharex=True, gridspec_kw={"hspace": 0.3}
@@ -94,8 +127,8 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
 
         # Plot Distance
         ax1.plot(
-            lab_df["Timestamp"],
-            lab_df["Distance"],
+            plot_df["Timestamp"],
+            plot_df["Distance"],
             marker="o",
             linestyle="-",
             color="#3498db",
@@ -103,14 +136,16 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             markersize=4,
         )
         ax1.set_ylabel("Distance (mm)")
-        ax1.set_title(f"Lab {lab_id} - Sublab {sublab_id} - Distance Over Time")
+        ax1.set_title(
+            f"{get_display_label(lab_id, sublab_id)} - Distance Over Time ({total_errors} errors excluded)"
+        )
         ax1.grid(True, alpha=0.3)
         ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
 
         # Plot Light
         ax2.plot(
-            lab_df["Timestamp"],
-            lab_df["Light"],
+            plot_df["Timestamp"],
+            plot_df["Light"],
             marker="s",
             linestyle="-",
             color="#e74c3c",
@@ -119,7 +154,9 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         )
         ax2.set_xlabel("Date Time")
         ax2.set_ylabel("Light (lux)")
-        ax2.set_title(f"Lab {lab_id} - Sublab {sublab_id} - Light Level Over Time")
+        ax2.set_title(
+            f"{get_display_label(lab_id, sublab_id)} - Light Level Over Time ({total_errors} errors excluded)"
+        )
         ax2.grid(True, alpha=0.3)
         ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
 
@@ -195,10 +232,22 @@ def create_html_dashboard(
             "</html>",
         ]
     else:
-        # Get unique lab/sublab combinations
-        lab_sublab_combinations = (
-            df[["LabId", "SubLabId"]].drop_duplicates().sort_values(by=["LabId", "SubLabId"])  # type: ignore[call-overload]
-        )
+        # Filter to last 7 days
+        last_week = datetime.now() - timedelta(days=7)
+        df = df[df["Timestamp"] >= last_week]  # type: ignore[assignment]
+
+        if df.empty:
+            html_lines += [
+                "    <p>No data found in the last 7 days.</p>",
+                "  </div>",
+                "</body>",
+                "</html>",
+            ]
+        else:
+            # Get unique lab/sublab combinations
+            lab_sublab_combinations = (
+                df[["LabId", "SubLabId"]].drop_duplicates().sort_values(by=["LabId", "SubLabId"])  # type: ignore[call-overload]
+            )
 
         # Process each lab/sublab combination
         for _, row in lab_sublab_combinations.iterrows():
@@ -216,29 +265,50 @@ def create_html_dashboard(
             if lab_df.empty:
                 continue
 
-            # Get latest reading
-            latest = lab_df.iloc[0]
+            # Count errors (negative values)
+            distance_errors = (lab_df["Distance"] < 0).sum()
+            light_errors = (lab_df["Light"] < 0).sum()
+            total_errors = distance_errors + light_errors
+
+            # Filter to valid data only (non-negative values) for statistics
+            valid_df = lab_df[(lab_df["Distance"] >= 0) & (lab_df["Light"] >= 0)]
+
+            # Get latest valid reading
+            if valid_df.empty:
+                latest = lab_df.iloc[0]
+            else:
+                latest = valid_df.iloc[0]
+
             latest_distance = latest["Distance"]
             latest_light = latest["Light"]
             latest_airflow = latest["Airflow"]
             latest_time = latest["Timestamp"]
 
-            # Calculate statistics
-            avg_distance = lab_df["Distance"].mean()
-            max_distance = lab_df["Distance"].max()
-            min_distance = lab_df["Distance"].min()
-            avg_light = lab_df["Light"].mean()
-            max_light = lab_df["Light"].max()
-            min_light = lab_df["Light"].min()
+            # Calculate statistics from valid data only
+            if valid_df.empty:
+                avg_distance = lab_df["Distance"].mean()
+                max_distance = lab_df["Distance"].max()
+                min_distance = lab_df["Distance"].min()
+                avg_light = lab_df["Light"].mean()
+                max_light = lab_df["Light"].max()
+                min_light = lab_df["Light"].min()
+            else:
+                avg_distance = valid_df["Distance"].mean()
+                max_distance = valid_df["Distance"].max()
+                min_distance = valid_df["Distance"].min()
+                avg_light = valid_df["Light"].mean()
+                max_light = valid_df["Light"].max()
+                min_light = valid_df["Light"].min()
 
             html_lines += [
                 '    <div class="lab-section">',
-                f"      <h2>Lab {lab_id} - Sublab {sublab_id}</h2>",
+                f"      <h2>{get_display_label(lab_id, sublab_id)}</h2>",
                 '      <div class="summary">',
                 f"        <h3>Latest Reading ({latest_time.strftime('%Y-%m-%d %H:%M:%S')})</h3>",
                 f"        <p><strong>Distance:</strong> {latest_distance:.2f} mm | "
                 f"<strong>Light Level:</strong> {latest_light:.2f} lux | "
                 f"<strong>Airflow:</strong> {latest_airflow:.2f} CFM</p>",
+                f"        <p><strong>Data Quality:</strong> {total_errors} error(s) detected and excluded from analysis</p>",
                 "      </div>",
                 '      <div class="stats-grid">',
                 '        <div class="stat-card distance">',
@@ -267,7 +337,7 @@ def create_html_dashboard(
             # Add plot if available
             if key in plot_files:
                 html_lines.append(
-                    f'      <img src="{plot_files[key]}" alt="Lab {lab_id} Sublab {sublab_id} trends" />'
+                    f'      <img src="{plot_files[key]}" alt="{get_display_label(lab_id, sublab_id)} trends" />'
                 )
 
             # Add data table (last 20 records)
