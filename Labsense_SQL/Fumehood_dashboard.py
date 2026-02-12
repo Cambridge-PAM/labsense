@@ -78,6 +78,10 @@ def calculate_sash_percentage_open(
     fully_closed = cal["fully_closed_mm"]
     fully_open = cal["fully_open_mm"]
 
+    # Clamp distance to fully_closed if it's greater (sensor noise, mechanical tolerance)
+    # Any distance >= fully_closed is treated as fully closed (0% open)
+    distance = min(distance, fully_closed)
+
     # Calculate percentage open
     # When distance = fully_closed, % = 0
     # When distance = fully_open, % = 100
@@ -400,11 +404,6 @@ def create_html_dashboard(
             latest_sash_percent = None
 
             if has_calibration:
-                # Calculate sash percentage for latest valid distance
-                latest_sash_percent = calculate_sash_percentage_open(
-                    latest_distance, lab_id, sublab_id
-                )
-
                 # Calculate sash opening for all valid data points
                 valid_df_copy = valid_df.copy()
                 valid_df_copy["SashPercentOpen"] = valid_df_copy["Distance"].apply(
@@ -412,7 +411,10 @@ def create_html_dashboard(
                 )
                 valid_sash_df = valid_df_copy[valid_df_copy["SashPercentOpen"].notna()]
 
+                # Find the most recent reading with valid sash percentage
                 if not valid_sash_df.empty:
+                    latest_sash_percent = valid_sash_df.iloc[0]["SashPercentOpen"]
+
                     # Calculate % of time sash was open (>= 25% open threshold)
                     time_open = (valid_sash_df["SashPercentOpen"] >= 25).sum()
                     total_readings = len(valid_sash_df)
@@ -500,7 +502,7 @@ def create_html_dashboard(
                 if has_light_threshold and percent_time_light_on is not None:
                     html_lines += [
                         '        <div class="stat-card light">',
-                        "          <h3>Time Light On</h3>",
+                        "          <h3>Time Fumehood Light On</h3>",
                         f'          <div class="value">{percent_time_light_on:.1f}</div>',
                         '          <div class="unit">%</div>',
                         "        </div>",
