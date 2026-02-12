@@ -49,7 +49,7 @@ def get_lab_display_name(lab_id: int) -> str:
 def get_display_label(lab_id: int, sublab_id: int) -> str:
     """Get formatted display label for a lab/sublab combination."""
     lab_name = get_lab_display_name(lab_id)
-    return f"{lab_name} - Fumehood {sublab_id}"
+    return f"Fumehood {sublab_id} ({lab_name})"
 
 
 def calculate_sash_percentage_open(
@@ -192,7 +192,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             ax1.set_ylim(0, 100)
             sash_error_count = (lab_df["Distance"] < 0).sum()
             ax1.set_title(
-                f"{get_display_label(lab_id, sublab_id)} - Sash Opening Over Time ({total_errors} errors excluded)"
+                f"{get_display_label(lab_id, sublab_id)}: Sash Opening ({total_errors} errors excluded)"
             )
         else:
             ax1.plot(
@@ -206,7 +206,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             )
             ax1.set_ylabel("Distance (mm)")
             ax1.set_title(
-                f"{get_display_label(lab_id, sublab_id)} - Distance Over Time ({total_errors} errors excluded)"
+                f"{get_display_label(lab_id, sublab_id)}: Sash Raw Distance ({total_errors} errors excluded)"
             )
         ax1.grid(True, alpha=0.3)
         ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
@@ -224,7 +224,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         ax2.set_xlabel("Date Time")
         ax2.set_ylabel("Light (lux)")
         ax2.set_title(
-            f"{get_display_label(lab_id, sublab_id)} - Light Level Over Time ({total_errors} errors excluded)"
+            f"{get_display_label(lab_id, sublab_id)}: Light Level ({total_errors} errors excluded)"
         )
         ax2.grid(True, alpha=0.3)
         ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
@@ -289,7 +289,7 @@ def create_html_dashboard(
         '  <div class="container">',
         '    <div class="header">',
         "      <h1>💨 Fumehood Monitoring Dashboard</h1>",
-        f"      <p>Real-time distance and light level monitoring • Generated {generated_time}</p>",
+        f"      <p>Real-time sash height and light level monitoring • Generated {generated_time}</p>",
         "    </div>",
     ]
 
