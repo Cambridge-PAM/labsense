@@ -40,6 +40,12 @@ FUMEHOOD_CALIBRATION = {
     (1, 3): {"fully_closed_mm": 760, "fully_open_mm": 100},
 }
 
+# Light threshold configuration: {(lab_id, sublab_id): {"light_on_threshold_lux": lux}}
+# Light level above this threshold indicates the light is on
+LIGHT_THRESHOLDS = {
+    (1, 3): {"light_on_threshold_lux": 80},
+}
+
 
 def get_lab_display_name(lab_id: int) -> str:
     """Get display name for a lab ID."""
@@ -81,6 +87,24 @@ def calculate_sash_percentage_open(
     if 0 <= percentage <= 100:
         return percentage
     return None
+
+
+def is_light_on(light_level: float, lab_id: int, sublab_id: int) -> Optional[bool]:
+    """Check if the fumehood light is on based on light level.
+
+    Args:
+        light_level: Light level reading in lux
+        lab_id: Laboratory ID
+        sublab_id: Sublaboratory/Fumehood ID
+
+    Returns:
+        True if light is on, False if off, or None if no threshold data
+    """
+    if (lab_id, sublab_id) not in LIGHT_THRESHOLDS:
+        return None
+
+    threshold = LIGHT_THRESHOLDS[(lab_id, sublab_id)]["light_on_threshold_lux"]
+    return light_level > threshold
 
 
 def fetch_fumehood_data(connection_string: str) -> pd.DataFrame:
@@ -373,8 +397,15 @@ def create_html_dashboard(
             has_calibration = (lab_id, sublab_id) in FUMEHOOD_CALIBRATION
             percent_time_open = None
             avg_sash_percent = None
+            latest_sash_percent = None
 
             if has_calibration:
+                # Calculate sash percentage for latest valid distance
+                latest_sash_percent = calculate_sash_percentage_open(
+                    latest_distance, lab_id, sublab_id
+                )
+
+                # Calculate sash opening for all valid data points
                 valid_df_copy = valid_df.copy()
                 valid_df_copy["SashPercentOpen"] = valid_df_copy["Distance"].apply(
                     lambda d: calculate_sash_percentage_open(d, lab_id, sublab_id)
@@ -390,6 +421,23 @@ def create_html_dashboard(
                     )
                     avg_sash_percent = valid_sash_df["SashPercentOpen"].mean()
 
+            # Calculate light on metrics if threshold data available
+            has_light_threshold = (lab_id, sublab_id) in LIGHT_THRESHOLDS
+            percent_time_light_on = None
+
+            if has_light_threshold:
+                # Calculate percentage of time light was on
+                light_on_readings = (
+                    valid_df["Light"]
+                    > LIGHT_THRESHOLDS[(lab_id, sublab_id)]["light_on_threshold_lux"]
+                ).sum()
+                total_light_readings = len(valid_df)
+                percent_time_light_on = (
+                    (light_on_readings / total_light_readings * 100)
+                    if total_light_readings > 0
+                    else 0
+                )
+
             html_lines += [
                 '    <div class="lab-section">',
                 f"      <h2>{get_display_label(lab_id, sublab_id)}</h2>",
@@ -397,22 +445,12 @@ def create_html_dashboard(
                 f"        <h3>Latest Reading ({latest_time.strftime('%Y-%m-%d %H:%M:%S')})</h3>",
             ]
 
-            if has_calibration and percent_time_open is not None:
-                sash_percent = calculate_sash_percentage_open(
-                    latest_distance, lab_id, sublab_id
+            if has_calibration and latest_sash_percent is not None:
+                html_lines.append(
+                    f"        <p><strong>Sash Opening:</strong> {latest_sash_percent:.1f}% | "
+                    f"<strong>Light Level:</strong> {latest_light:.2f} lux | "
+                    f"<strong>Airflow:</strong> {latest_airflow:.2f} CFM</p>"
                 )
-                if sash_percent is not None:
-                    html_lines.append(
-                        f"        <p><strong>Sash Opening:</strong> {sash_percent:.1f}% | "
-                        f"<strong>Light Level:</strong> {latest_light:.2f} lux | "
-                        f"<strong>Airflow:</strong> {latest_airflow:.2f} CFM</p>"
-                    )
-                else:
-                    html_lines.append(
-                        f"        <p><strong>Distance:</strong> {latest_distance:.2f} mm | "
-                        f"<strong>Light Level:</strong> {latest_light:.2f} lux | "
-                        f"<strong>Airflow:</strong> {latest_airflow:.2f} CFM</p>"
-                    )
             else:
                 html_lines.append(
                     f"        <p><strong>Distance:</strong> {latest_distance:.2f} mm | "
@@ -428,16 +466,17 @@ def create_html_dashboard(
 
             # Add stat cards based on calibration availability
             if has_calibration and avg_sash_percent is not None:
-                latest_sash_percent = calculate_sash_percentage_open(
-                    latest_distance, lab_id, sublab_id
+                # Use calculated latest_sash_percent or fall back to average
+                display_sash_percent = (
+                    latest_sash_percent
+                    if latest_sash_percent is not None
+                    else avg_sash_percent
                 )
-                if latest_sash_percent is None:
-                    latest_sash_percent = avg_sash_percent
 
                 html_lines += [
                     '        <div class="stat-card distance">',
                     "          <h3>Current Sash Opening</h3>",
-                    f'          <div class="value">{latest_sash_percent:.1f}</div>',
+                    f'          <div class="value">{display_sash_percent:.1f}</div>',
                     '          <div class="unit">%</div>',
                     "        </div>",
                     '        <div class="stat-card light">',
@@ -456,6 +495,16 @@ def create_html_dashboard(
                     '          <div class="unit">%</div>',
                     "        </div>",
                 ]
+
+                # Add light on metric if available
+                if has_light_threshold and percent_time_light_on is not None:
+                    html_lines += [
+                        '        <div class="stat-card light">',
+                        "          <h3>Time Light On</h3>",
+                        f'          <div class="value">{percent_time_light_on:.1f}</div>',
+                        '          <div class="unit">%</div>',
+                        "        </div>",
+                    ]
             else:
                 html_lines += [
                     '        <div class="stat-card distance">',
@@ -479,6 +528,16 @@ def create_html_dashboard(
                     '          <div class="unit">lux</div>',
                     "        </div>",
                 ]
+
+                # Add light on metric if available
+                if has_light_threshold and percent_time_light_on is not None:
+                    html_lines += [
+                        '        <div class="stat-card light">',
+                        "          <h3>Time Light On</h3>",
+                        f'          <div class="value">{percent_time_light_on:.1f}</div>',
+                        '          <div class="unit">%</div>',
+                        "        </div>",
+                    ]
 
             html_lines.append("      </div>")
 
