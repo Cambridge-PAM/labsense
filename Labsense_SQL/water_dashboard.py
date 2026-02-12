@@ -137,18 +137,24 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if plot_df.empty:
             continue
 
+        # Aggregate data into 30-minute intervals
+        plot_df = (
+            plot_df.set_index("Timestamp")
+            .resample("30min")["Water"]
+            .sum()
+            .reset_index()
+        )
+
         # Create figure with water consumption plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Plot Water Consumption
-        ax.plot(
+        # Plot Water Consumption as bars
+        ax.bar(
             plot_df["Timestamp"],
             plot_df["Water"],
-            marker="o",
-            linestyle="-",
             color="#3498db",
-            linewidth=2,
-            markersize=4,
+            width=0.02,  # Adjust bar width for better visibility
+            edgecolor="none",
         )
         ax.set_xlabel("Date Time")
         ax.set_ylabel("Water Consumption (L)")
