@@ -34,7 +34,7 @@ from Labsense_SQL.constants import to_litre
 
 
 DEFAULT_PATH = Path(
-    r"Z:\\rfs-photoactivemat-n4JGmUYvTts\\LabsenseDashboard\\Waste Master.xlsx"
+    r"Z:\\LabsenseDashboard\\Waste Master.xlsx"
 )
 
 
