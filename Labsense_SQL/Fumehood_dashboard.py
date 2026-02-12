@@ -34,6 +34,12 @@ CONNECTION_STRING = (
 # Lab ID to name mapping
 LAB_NAMES = {1: "Lab -1.025", 2: "Lab -1.041"}
 
+# Fumehood calibration data: {(lab_id, sublab_id): {"fully_closed_mm": mm, "fully_open_mm": mm}}
+# Distance values for sash fully closed (0% open) and fully open (100% open)
+FUMEHOOD_CALIBRATION = {
+    (1, 3): {"fully_closed_mm": 760, "fully_open_mm": 100},
+}
+
 
 def get_lab_display_name(lab_id: int) -> str:
     """Get display name for a lab ID."""
@@ -44,6 +50,37 @@ def get_display_label(lab_id: int, sublab_id: int) -> str:
     """Get formatted display label for a lab/sublab combination."""
     lab_name = get_lab_display_name(lab_id)
     return f"{lab_name} - Fumehood {sublab_id}"
+
+
+def calculate_sash_percentage_open(
+    distance: float, lab_id: int, sublab_id: int
+) -> Optional[float]:
+    """Calculate sash opening percentage based on distance.
+
+    Args:
+        distance: Distance reading in mm
+        lab_id: Laboratory ID
+        sublab_id: Sublaboratory/Fumehood ID
+
+    Returns:
+        Percentage open (0-100) or None if no calibration data or invalid result
+    """
+    if (lab_id, sublab_id) not in FUMEHOOD_CALIBRATION:
+        return None
+
+    cal = FUMEHOOD_CALIBRATION[(lab_id, sublab_id)]
+    fully_closed = cal["fully_closed_mm"]
+    fully_open = cal["fully_open_mm"]
+
+    # Calculate percentage open
+    # When distance = fully_closed, % = 0
+    # When distance = fully_open, % = 100
+    percentage = ((fully_closed - distance) / (fully_closed - fully_open)) * 100
+
+    # Only return valid percentages (0-100)
+    if 0 <= percentage <= 100:
+        return percentage
+    return None
 
 
 def fetch_fumehood_data(connection_string: str) -> pd.DataFrame:
@@ -120,25 +157,57 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if plot_df.empty:
             continue
 
-        # Create figure with two subplots (Distance and Light)
+        # Check if we have calibration data for this fumehood
+        has_calibration = (lab_id, sublab_id) in FUMEHOOD_CALIBRATION
+
+        if has_calibration:
+            # Calculate sash opening percentage for each point
+            plot_df = plot_df.copy()
+            plot_df["SashPercentOpen"] = plot_df["Distance"].apply(
+                lambda d: calculate_sash_percentage_open(d, lab_id, sublab_id)
+            )
+            # Filter to valid percentage values only (0-100)
+            plot_df = plot_df[plot_df["SashPercentOpen"].notna()]
+
+            if plot_df.empty:
+                continue
+
+        # Create figure with two subplots (Sash % / Distance and Light)
         fig, (ax1, ax2) = plt.subplots(
             2, 1, figsize=(12, 10), sharex=True, gridspec_kw={"hspace": 0.3}
         )
 
-        # Plot Distance
-        ax1.plot(
-            plot_df["Timestamp"],
-            plot_df["Distance"],
-            marker="o",
-            linestyle="-",
-            color="#3498db",
-            linewidth=2,
-            markersize=4,
-        )
-        ax1.set_ylabel("Distance (mm)")
-        ax1.set_title(
-            f"{get_display_label(lab_id, sublab_id)} - Distance Over Time ({total_errors} errors excluded)"
-        )
+        # Plot Sash Opening Percentage or Distance
+        if has_calibration:
+            ax1.plot(
+                plot_df["Timestamp"],
+                plot_df["SashPercentOpen"],
+                marker="o",
+                linestyle="-",
+                color="#3498db",
+                linewidth=2,
+                markersize=4,
+            )
+            ax1.set_ylabel("Sash Opening (%)")
+            ax1.set_ylim(0, 100)
+            sash_error_count = (lab_df["Distance"] < 0).sum()
+            ax1.set_title(
+                f"{get_display_label(lab_id, sublab_id)} - Sash Opening Over Time ({total_errors} errors excluded)"
+            )
+        else:
+            ax1.plot(
+                plot_df["Timestamp"],
+                plot_df["Distance"],
+                marker="o",
+                linestyle="-",
+                color="#3498db",
+                linewidth=2,
+                markersize=4,
+            )
+            ax1.set_ylabel("Distance (mm)")
+            ax1.set_title(
+                f"{get_display_label(lab_id, sublab_id)} - Distance Over Time ({total_errors} errors excluded)"
+            )
         ax1.grid(True, alpha=0.3)
         ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
 
@@ -300,39 +369,118 @@ def create_html_dashboard(
                 max_light = valid_df["Light"].max()
                 min_light = valid_df["Light"].min()
 
+            # Calculate sash opening metrics if calibration data available
+            has_calibration = (lab_id, sublab_id) in FUMEHOOD_CALIBRATION
+            percent_time_open = None
+            avg_sash_percent = None
+
+            if has_calibration:
+                valid_df_copy = valid_df.copy()
+                valid_df_copy["SashPercentOpen"] = valid_df_copy["Distance"].apply(
+                    lambda d: calculate_sash_percentage_open(d, lab_id, sublab_id)
+                )
+                valid_sash_df = valid_df_copy[valid_df_copy["SashPercentOpen"].notna()]
+
+                if not valid_sash_df.empty:
+                    # Calculate % of time sash was open (>= 25% open threshold)
+                    time_open = (valid_sash_df["SashPercentOpen"] >= 25).sum()
+                    total_readings = len(valid_sash_df)
+                    percent_time_open = (
+                        (time_open / total_readings * 100) if total_readings > 0 else 0
+                    )
+                    avg_sash_percent = valid_sash_df["SashPercentOpen"].mean()
+
             html_lines += [
                 '    <div class="lab-section">',
                 f"      <h2>{get_display_label(lab_id, sublab_id)}</h2>",
                 '      <div class="summary">',
                 f"        <h3>Latest Reading ({latest_time.strftime('%Y-%m-%d %H:%M:%S')})</h3>",
-                f"        <p><strong>Distance:</strong> {latest_distance:.2f} mm | "
-                f"<strong>Light Level:</strong> {latest_light:.2f} lux | "
-                f"<strong>Airflow:</strong> {latest_airflow:.2f} CFM</p>",
+            ]
+
+            if has_calibration and percent_time_open is not None:
+                sash_percent = calculate_sash_percentage_open(
+                    latest_distance, lab_id, sublab_id
+                )
+                if sash_percent is not None:
+                    html_lines.append(
+                        f"        <p><strong>Sash Opening:</strong> {sash_percent:.1f}% | "
+                        f"<strong>Light Level:</strong> {latest_light:.2f} lux | "
+                        f"<strong>Airflow:</strong> {latest_airflow:.2f} CFM</p>"
+                    )
+                else:
+                    html_lines.append(
+                        f"        <p><strong>Distance:</strong> {latest_distance:.2f} mm | "
+                        f"<strong>Light Level:</strong> {latest_light:.2f} lux | "
+                        f"<strong>Airflow:</strong> {latest_airflow:.2f} CFM</p>"
+                    )
+            else:
+                html_lines.append(
+                    f"        <p><strong>Distance:</strong> {latest_distance:.2f} mm | "
+                    f"<strong>Light Level:</strong> {latest_light:.2f} lux | "
+                    f"<strong>Airflow:</strong> {latest_airflow:.2f} CFM</p>"
+                )
+
+            html_lines += [
                 f"        <p><strong>Data Quality:</strong> {total_errors} error(s) detected and excluded from analysis</p>",
                 "      </div>",
                 '      <div class="stats-grid">',
-                '        <div class="stat-card distance">',
-                "          <h3>Current Distance</h3>",
-                f'          <div class="value">{latest_distance:.1f}</div>',
-                '          <div class="unit">mm</div>',
-                "        </div>",
-                '        <div class="stat-card light">',
-                "          <h3>Current Light</h3>",
-                f'          <div class="value">{latest_light:.1f}</div>',
-                '          <div class="unit">lux</div>',
-                "        </div>",
-                '        <div class="stat-card distance">',
-                "          <h3>Avg Distance</h3>",
-                f'          <div class="value">{avg_distance:.1f}</div>',
-                '          <div class="unit">mm</div>',
-                "        </div>",
-                '        <div class="stat-card light">',
-                "          <h3>Avg Light</h3>",
-                f'          <div class="value">{avg_light:.1f}</div>',
-                '          <div class="unit">lux</div>',
-                "        </div>",
-                "      </div>",
             ]
+
+            # Add stat cards based on calibration availability
+            if has_calibration and avg_sash_percent is not None:
+                latest_sash_percent = calculate_sash_percentage_open(
+                    latest_distance, lab_id, sublab_id
+                )
+                if latest_sash_percent is None:
+                    latest_sash_percent = avg_sash_percent
+
+                html_lines += [
+                    '        <div class="stat-card distance">',
+                    "          <h3>Current Sash Opening</h3>",
+                    f'          <div class="value">{latest_sash_percent:.1f}</div>',
+                    '          <div class="unit">%</div>',
+                    "        </div>",
+                    '        <div class="stat-card light">',
+                    "          <h3>Current Light</h3>",
+                    f'          <div class="value">{latest_light:.1f}</div>',
+                    '          <div class="unit">lux</div>',
+                    "        </div>",
+                    '        <div class="stat-card distance">',
+                    "          <h3>Avg Sash Opening</h3>",
+                    f'          <div class="value">{avg_sash_percent:.1f}</div>',
+                    '          <div class="unit">%</div>',
+                    "        </div>",
+                    '        <div class="stat-card light">',
+                    "          <h3>Time Sash Open</h3>",
+                    f'          <div class="value">{percent_time_open:.1f}</div>',
+                    '          <div class="unit">%</div>',
+                    "        </div>",
+                ]
+            else:
+                html_lines += [
+                    '        <div class="stat-card distance">',
+                    "          <h3>Current Distance</h3>",
+                    f'          <div class="value">{latest_distance:.1f}</div>',
+                    '          <div class="unit">mm</div>',
+                    "        </div>",
+                    '        <div class="stat-card light">',
+                    "          <h3>Current Light</h3>",
+                    f'          <div class="value">{latest_light:.1f}</div>',
+                    '          <div class="unit">lux</div>',
+                    "        </div>",
+                    '        <div class="stat-card distance">',
+                    "          <h3>Avg Distance</h3>",
+                    f'          <div class="value">{avg_distance:.1f}</div>',
+                    '          <div class="unit">mm</div>',
+                    "        </div>",
+                    '        <div class="stat-card light">',
+                    "          <h3>Avg Light</h3>",
+                    f'          <div class="value">{avg_light:.1f}</div>',
+                    '          <div class="unit">lux</div>',
+                    "        </div>",
+                ]
+
+            html_lines.append("      </div>")
 
             # Add plot if available
             if key in plot_files:
