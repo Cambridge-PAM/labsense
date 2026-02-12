@@ -432,11 +432,11 @@ def create_html_dashboard(
 
             # Calculate light on metrics if threshold data available
             has_light_threshold = (lab_id, sublab_id) in LIGHT_THRESHOLDS
-            percent_time_light_on = None
-            percent_time_room_light_on = None
+            hours_per_day_fumehood_light_on = None
+            hours_per_day_room_light_on = None
 
             if has_light_threshold:
-                # Calculate percentage of time fumehood light was on
+                # Calculate hours per day fumehood light was on
                 light_on_readings = (
                     valid_df["Light"]
                     > LIGHT_THRESHOLDS[(lab_id, sublab_id)]["light_on_threshold_lux"]
@@ -447,8 +447,10 @@ def create_html_dashboard(
                     if total_light_readings > 0
                     else 0
                 )
+                # Convert percentage to hours per day
+                hours_per_day_fumehood_light_on = (percent_time_light_on / 100) * 24
 
-                # Calculate percentage of time room lights were on (if threshold defined)
+                # Calculate hours per day room lights were on (if threshold defined)
                 if (
                     "room_light_on_threshold_lux"
                     in LIGHT_THRESHOLDS[(lab_id, sublab_id)]
@@ -464,6 +466,10 @@ def create_html_dashboard(
                         if total_light_readings > 0
                         else 0
                     )
+                    # Convert percentage to hours per day
+                    hours_per_day_room_light_on = (
+                        percent_time_room_light_on / 100
+                    ) * 24
 
             html_lines += [
                 '    <div class="lab-section">',
@@ -524,22 +530,22 @@ def create_html_dashboard(
                 ]
 
                 # Add light on metrics if available
-                if has_light_threshold and percent_time_light_on is not None:
+                if has_light_threshold and hours_per_day_fumehood_light_on is not None:
                     html_lines += [
                         '        <div class="stat-card light">',
-                        "          <h3>Time Fumehood Light On</h3>",
-                        f'          <div class="value">{percent_time_light_on:.1f}</div>',
-                        '          <div class="unit">%</div>',
+                        "          <h3>Fumehood Light On</h3>",
+                        f'          <div class="value">{hours_per_day_fumehood_light_on:.1f}</div>',
+                        '          <div class="unit">hrs/day</div>',
                         "        </div>",
                     ]
 
                 # Add room light on metric if available
-                if percent_time_room_light_on is not None:
+                if hours_per_day_room_light_on is not None:
                     html_lines += [
                         '        <div class="stat-card light">',
-                        "          <h3>Time Room Lights On</h3>",
-                        f'          <div class="value">{percent_time_room_light_on:.1f}</div>',
-                        '          <div class="unit">%</div>',
+                        "          <h3>Room Lights On</h3>",
+                        f'          <div class="value">{hours_per_day_room_light_on:.1f}</div>',
+                        '          <div class="unit">hrs/day</div>',
                         "        </div>",
                     ]
             else:
@@ -567,22 +573,22 @@ def create_html_dashboard(
                 ]
 
                 # Add light on metrics if available
-                if has_light_threshold and percent_time_light_on is not None:
+                if has_light_threshold and hours_per_day_fumehood_light_on is not None:
                     html_lines += [
                         '        <div class="stat-card light">',
-                        "          <h3>Time Fumehood Light On</h3>",
-                        f'          <div class="value">{percent_time_light_on:.1f}</div>',
-                        '          <div class="unit">%</div>',
+                        "          <h3>Fumehood Light On</h3>",
+                        f'          <div class="value">{hours_per_day_fumehood_light_on:.1f}</div>',
+                        '          <div class="unit">hrs/day</div>',
                         "        </div>",
                     ]
 
                 # Add room light on metric if available
-                if percent_time_room_light_on is not None:
+                if hours_per_day_room_light_on is not None:
                     html_lines += [
                         '        <div class="stat-card light">',
-                        "          <h3>Time Room Lights On</h3>",
-                        f'          <div class="value">{percent_time_room_light_on:.1f}</div>',
-                        '          <div class="unit">%</div>',
+                        "          <h3>Room Lights On</h3>",
+                        f'          <div class="value">{hours_per_day_room_light_on:.1f}</div>',
+                        '          <div class="unit">hrs/day</div>',
                         "        </div>",
                     ]
 
