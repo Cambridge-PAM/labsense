@@ -407,6 +407,7 @@ def create_html_dashboard(
             # Calculate sash opening metrics if calibration data available
             has_calibration = (lab_id, sublab_id) in FUMEHOOD_CALIBRATION
             percent_time_open = None
+            hours_per_day_sash_open = None
             avg_sash_percent = None
             latest_sash_percent = None
 
@@ -422,12 +423,14 @@ def create_html_dashboard(
                 if not valid_sash_df.empty:
                     latest_sash_percent = valid_sash_df.iloc[0]["SashPercentOpen"]
 
-                    # Calculate % of time sash was open (>= 25% open threshold)
+                    # Calculate hours per day sash was open (>= 25% open threshold)
                     time_open = (valid_sash_df["SashPercentOpen"] >= 25).sum()
                     total_readings = len(valid_sash_df)
                     percent_time_open = (
                         (time_open / total_readings * 100) if total_readings > 0 else 0
                     )
+                    # Convert percentage to hours per day
+                    hours_per_day_sash_open = (percent_time_open / 100) * 24
                     avg_sash_percent = valid_sash_df["SashPercentOpen"].mean()
 
             # Calculate light on metrics if threshold data available
@@ -523,9 +526,9 @@ def create_html_dashboard(
                     '          <div class="unit">%</div>',
                     "        </div>",
                     '        <div class="stat-card light">',
-                    "          <h3>Time Sash Open</h3>",
-                    f'          <div class="value">{percent_time_open:.1f}</div>',
-                    '          <div class="unit">%</div>',
+                    "          <h3>Sash Open</h3>",
+                    f'          <div class="value">{hours_per_day_sash_open:.1f}</div>',
+                    '          <div class="unit">hrs/day</div>',
                     "        </div>",
                 ]
 
