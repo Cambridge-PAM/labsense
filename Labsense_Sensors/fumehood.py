@@ -55,6 +55,18 @@ TOF_RANGING_MODE = int(os.getenv("TOF_RANGING_MODE", "1"))  # 1=Short, 2=Medium,
 # Measurement Configuration
 MEASUREMENT_INTERVAL = int(os.getenv("MEASUREMENT_INTERVAL", "10"))
 
+# Sensor Validation Configuration
+DISTANCE_MIN_MM = int(os.getenv("DISTANCE_MIN_MM", "0"))  # Minimum valid distance in mm
+DISTANCE_MAX_MM = int(
+    os.getenv("DISTANCE_MAX_MM", "4000")
+)  # Maximum valid distance in mm
+LIGHT_MIN_LUX = float(
+    os.getenv("LIGHT_MIN_LUX", "0")
+)  # Minimum valid light level in lux
+LIGHT_MAX_LUX = float(
+    os.getenv("LIGHT_MAX_LUX", "200000")
+)  # Maximum valid light level in lux
+
 # Validate required configuration
 if not MQTT_SERVER:
     logger.error("MQTT_SERVER not configured in .env file")
@@ -163,6 +175,32 @@ def read_light_sensor() -> Optional[float]:
         return None
 
 
+def validate_distance(distance: Optional[float]) -> bool:
+    """Validate that distance reading is within acceptable range"""
+    if distance is None:
+        return False
+    if distance < DISTANCE_MIN_MM or distance > DISTANCE_MAX_MM:
+        logger.warning(
+            f"Distance reading {distance} mm is outside valid range "
+            f"({DISTANCE_MIN_MM}-{DISTANCE_MAX_MM} mm)"
+        )
+        return False
+    return True
+
+
+def validate_light(lux: Optional[float]) -> bool:
+    """Validate that light level reading is within acceptable range"""
+    if lux is None:
+        return False
+    if lux < LIGHT_MIN_LUX or lux > LIGHT_MAX_LUX:
+        logger.warning(
+            f"Light level reading {lux} lux is outside valid range "
+            f"({LIGHT_MIN_LUX}-{LIGHT_MAX_LUX} lux)"
+        )
+        return False
+    return True
+
+
 def publish_mqtt(msg_payload: str, retry_count: int = 3) -> bool:
     """Publish message to MQTT with retry logic"""
     for attempt in range(1, retry_count + 1):
@@ -225,16 +263,20 @@ async def main():
                 f"airflow={airflow}"
             )
 
+            # Validate sensor readings
+            distance_valid = validate_distance(distance)
+            light_valid = validate_light(lux)
+
             # Only send if we have at least one valid sensor reading
-            if distance is not None or lux is not None:
+            if distance_valid or light_valid:
                 msg_payload = str(
                     {
                         "labId": LAB_ID,
                         "sublabId": SUBLAB_ID,
                         "sensorReadings": {
                             "fumehood": {
-                                "distance": distance if distance is not None else -1.0,
-                                "light": lux if lux is not None else -1.0,
+                                "distance": distance if distance_valid else -1.0,
+                                "light": lux if light_valid else -1.0,
                                 "airflow": airflow,
                             }
                         },
