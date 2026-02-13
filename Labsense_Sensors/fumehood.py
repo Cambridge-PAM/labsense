@@ -53,7 +53,7 @@ TOF_I2C_ADDRESS = int(os.getenv("TOF_I2C_ADDRESS", "0x29"), 16)
 TOF_RANGING_MODE = int(os.getenv("TOF_RANGING_MODE", "1"))  # 1=Short, 2=Medium, 3=Long
 
 # Measurement Configuration
-MEASUREMENT_INTERVAL = int(os.getenv("MEASUREMENT_INTERVAL", "10"))
+MEASUREMENT_INTERVAL = int(os.getenv("MEASUREMENT_INTERVAL", "30"))
 
 # Sensor Validation Configuration
 DISTANCE_MIN_MM = int(os.getenv("DISTANCE_MIN_MM", "0"))  # Minimum valid distance in mm
