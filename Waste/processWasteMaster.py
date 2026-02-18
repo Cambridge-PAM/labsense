@@ -133,6 +133,25 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
     plot_dir = Path(plot_dir)
     plot_dir.mkdir(parents=True, exist_ok=True)
 
+    # HP code to 1-word description mapping for legend labels
+    hp_labels = {
+        "HP1": "Explosive",
+        "HP2": "Oxidizing",
+        "HP3": "Flammable",
+        "HP4": "Irritant",
+        "HP5": "Harmful",
+        "HP6": "Toxic",
+        "HP7": "Carcinogenic",
+        "HP8": "Corrosive",
+        "HP9": "Infectious",
+        "HP10": "Toxic for reproductive",
+        "HP11": "Mutagenic",
+        "HP12": "Acute toxic gas release",
+        "HP13": "Sensitizing",
+        "HP14": "Ecotoxic",
+        "HP15": "Indirect",
+    }
+
     # Prepare pivot tables for HP volumes
     pivot = res_df.copy()
     pivot["Date"] = pd.to_datetime(pivot["Date"])
@@ -192,6 +211,8 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
     present_hps_q = [c for c in hp_cols if c in pivot_q_pct.columns]
     if present_hps_q:
         pivot_q_pct_sel = pivot_q_pct[present_hps_q]
+        # Rename columns to use descriptive labels
+        pivot_q_pct_sel = pivot_q_pct_sel.rename(columns=hp_labels)
         fig, ax = plt.subplots(figsize=(12, 6))
         pivot_q_pct_sel.plot(kind="bar", stacked=True, ax=ax, colormap="tab20")
         ax.set_title(
@@ -203,7 +224,7 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
         ax.set_ylabel("Percentage (%)")
         ax.set_ylim(0, 100)
         plt.xticks(rotation=45, ha="right")
-        plt.legend(title="HP Code", bbox_to_anchor=(1.05, 1), loc="upper left")
+        plt.legend(title="Hazard Property", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fqs = plot_dir / f"{clean_prefix}_by_quarter_stacked.png"
         fig.savefig(fqs)
@@ -236,6 +257,8 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
     present_hps_y = [c for c in hp_cols if c in pivot_y_pct.columns]
     if present_hps_y:
         pivot_y_pct_sel = pivot_y_pct[present_hps_y]
+        # Rename columns to use descriptive labels
+        pivot_y_pct_sel = pivot_y_pct_sel.rename(columns=hp_labels)
         fig, ax = plt.subplots(figsize=(10, 6))
         pivot_y_pct_sel.plot(kind="bar", stacked=True, ax=ax, colormap="tab20")
         ax.set_title(
@@ -247,7 +270,7 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
         ax.set_ylabel("Percentage (%)")
         ax.set_ylim(0, 100)
         plt.xticks(rotation=0)
-        plt.legend(title="HP Code", bbox_to_anchor=(1.05, 1), loc="upper left")
+        plt.legend(title="Hazard Property", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fys = plot_dir / f"{clean_prefix}_by_year_stacked.png"
         fig.savefig(fys)
