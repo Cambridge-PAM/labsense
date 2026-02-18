@@ -52,9 +52,18 @@ CATEGORY_DISPLAY_NAMES = {
     "chemComposite": "Composite Environmental Impact",
     "chemIncineration": "Incineration",
     "chemVOC": "Volatile Organic Compounds (VOC)",
-    "chemAquatic": "Aquatic Toxicity",
-    "chemAir": "Air Emissions",
+    "chemAquatic": "Environmental Impact - Aquatic",
+    "chemAir": "Environmental Impact - Air",
     "chemHealth": "Health Hazards",
+}
+
+CATEGORY_BRIEF_DESCRIPTIONS = {
+    "chemIncineration": "How a solvent behaves during thermal destruction, including combustion emissions risk and energy profile, to distinguish cleaner-burning solvents from those likely to generate harmful by-products.",
+    "chemVOC": "The tendency to release volatile organic compounds under normal handling, estimated from volatility indicators like vapour pressure and boiling point.",
+    "chemAquatic": "Potential impact on aquatic ecosystems based on acute/chronic toxicity and biodegradation, separating readily degradable lower-risk solvents from persistent or highly toxic ones.",
+    "chemAir": "Impact on air quality based on factors such as photochemical ozone creation potential, odour effects, and volatility, including relevant atmospheric hazard considerations.",
+    "chemHealth": "Inherent health risk profile using GHS classifications, exposure limits, and toxicological endpoints across acute and chronic effects.",
+    "chemComposite": "A normalised overall sustainability score combining environmental, health, safety, and emissions considerations into one decision-support classification.",
 }
 
 
@@ -177,6 +186,7 @@ def create_html_dashboard(
         "    .header p { margin: 0; color: #7f8c8d; }",
         "    .category-section { background: white; border-radius: 10px; padding: 25px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }",
         "    .category-section h2 { margin: 0 0 20px 0; color: #34495e; border-bottom: 2px solid #3498db; padding-bottom: 10px; }",
+        "    .category-description { margin: -8px 0 18px 0; color: #5f6c7b; line-height: 1.45; }",
         "    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }",
         "    .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; }",
         "    .stat-card.red { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); }",
@@ -209,6 +219,7 @@ def create_html_dashboard(
 
         df = data[category]
         display_name = CATEGORY_DISPLAY_NAMES.get(category, category)
+        category_description = CATEGORY_BRIEF_DESCRIPTIONS.get(category, "")
 
         # Get latest values
         latest = df.iloc[0]
@@ -221,6 +232,7 @@ def create_html_dashboard(
         html_lines += [
             '    <div class="category-section">',
             f"      <h2>{display_name}</h2>",
+            f'      <p class="category-description">{category_description}</p>',
             '      <div class="summary">',
             f"        <h3>Latest Reading ({latest_time})</h3>",
             f"        <p><strong>Total Volume:</strong> {total_vol:.2f} L</p>",
