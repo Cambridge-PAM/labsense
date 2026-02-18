@@ -21,9 +21,28 @@ def test_compute_hp_volume_basic():
     res = pwm.compute_hp_volume(df)
     mapping = {r["HP Number"]: r["Volume(L)"] for _, r in res.iterrows()}
 
-    assert approx(mapping["HP1"], 5.0)
-    assert approx(mapping["HP2"], 2.5)
-    assert approx(mapping["HP3"], 7.5)
+    assert approx(mapping["HP1"], 2.5)
+    assert approx(mapping["HP2"], 1.25)
+    assert approx(mapping["HP3"], 3.75)
+
+
+def test_compute_hp_volume_splits_evenly_across_active_hp_flags():
+    df = pd.DataFrame(
+        {
+            "Date": ["2026-02-01"],
+            "Size": [2.5],
+            "Unit": ["L"],
+            "HP1": [1],
+            "HP2": [1],
+            "HP3": [0],
+        }
+    )
+    res = pwm.compute_hp_volume(df)
+    mapping = {r["HP Number"]: r["Volume(L)"] for _, r in res.iterrows()}
+
+    assert approx(mapping["HP1"], 1.25)
+    assert approx(mapping["HP2"], 1.25)
+    assert approx(mapping["HP3"], 0.0)
 
 
 def test_compute_hp_volume_units_and_unknown_unit(capfd):

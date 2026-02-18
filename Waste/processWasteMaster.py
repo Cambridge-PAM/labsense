@@ -33,9 +33,7 @@ from Labsense_SQL.constants import to_litre
 # `to_litre` moved to `Labsense_SQL.constants` to avoid duplication.
 
 
-DEFAULT_PATH = Path(
-    r"Z:\\LabsenseDashboard\\Waste Master.xlsx"
-)
+DEFAULT_PATH = Path(r"Z:\\LabsenseDashboard\\Waste Master.xlsx")
 
 
 def load_df(path: Path) -> pd.DataFrame:
@@ -96,16 +94,25 @@ def compute_hp_volume(df: pd.DataFrame) -> pd.DataFrame:
     df["Size_numeric"] = size_numeric.fillna(0.0)  # type: ignore
     df["volume_l"] = df["Size_numeric"] * df["unit_mult"]
 
-    results = []
-    for date, group in df.groupby("Date"):
-        for hp in hp_cols:
-            # treat hp column as numeric flag or fraction
-            hp_series = pd.to_numeric(group[hp], errors="coerce")
-            vals = hp_series.fillna(0)  # type: ignore
-            # sum volume weighted by presence
-            total_l = (vals * group["volume_l"]).sum()
-            results.append({"Date": date, "HP Number": hp, "Volume(L)": total_l})
-    res_df = pd.DataFrame(results)
+    # Allocate each row volume proportionally across all active HP flags to avoid
+    # double counting. For example, a 2.5 L row with HP1=1 and HP2=1 contributes
+    # 1.25 L to HP1 and 1.25 L to HP2.
+    hp_numeric = df[hp_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+    hp_active = hp_numeric.gt(0)
+    active_counts = pd.Series(hp_active.sum(axis=1), index=df.index, dtype="float64")
+
+    # Rows with no active HP flags should contribute zero to all HP totals.
+    allocation_base = df["volume_l"] / active_counts.replace(0, pd.NA)
+    allocated = hp_active.mul(allocation_base, axis=0).fillna(0.0)
+
+    allocated_with_date = allocated.assign(Date=df["Date"])
+    res_df = (
+        allocated_with_date.melt(
+            id_vars="Date", var_name="HP Number", value_name="Volume(L)"
+        )
+        .groupby(["Date", "HP Number"], as_index=False)["Volume(L)"]
+        .sum()
+    )
     return res_df
 
 
