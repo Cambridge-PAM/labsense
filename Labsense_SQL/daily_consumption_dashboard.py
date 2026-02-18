@@ -93,9 +93,12 @@ def create_plots(df: pd.DataFrame, plot_dir: Path):
 
     plot_files = {}
 
-    # Filter to last year only
+    # Filter to last year window, anchored to the 1st of the start month
     one_year_ago = datetime.now() - timedelta(days=365)
-    df_last_year = df[df["Datestamp"] >= one_year_ago].copy()
+    last_year_start = one_year_ago.replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+    df_last_year = df[df["Datestamp"] >= last_year_start].copy()
 
     if df_last_year.empty:
         print("No data in the last year")
@@ -103,6 +106,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path):
 
     # Sort by date for plotting
     df_sorted = df_last_year.sort_values("Datestamp")
+    df_sorted["Esum_7d_ma"] = df_sorted["Esum"].rolling(window=7, min_periods=1).mean()
 
     # Create daily consumption trend plot (last year only)
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -114,6 +118,15 @@ def create_plots(df: pd.DataFrame, plot_dir: Path):
         linewidth=2,
         markersize=4,
         color="#3498db",
+        label="Daily Consumption",
+    )
+    ax.plot(
+        df_sorted["Datestamp"],
+        df_sorted["Esum_7d_ma"],
+        linestyle="--",
+        linewidth=2.5,
+        color="#e67e22",
+        label="7-Day Moving Average",
     )
     ax.set_xlabel("Date", fontsize=12)
     ax.set_ylabel("Daily Consumption (kWh)", fontsize=12)
@@ -123,6 +136,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path):
         fontweight="bold",
     )
     ax.grid(True, alpha=0.3)
+    ax.legend()
 
     # Format x-axis dates
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
