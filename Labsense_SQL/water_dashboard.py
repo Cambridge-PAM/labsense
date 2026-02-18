@@ -137,32 +137,30 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if plot_df.empty:
             continue
 
-        # Aggregate data into 30-minute intervals
+        # Aggregate data into daily intervals
         plot_df = (
-            plot_df.set_index("Timestamp")
-            .resample("30min")["Water"]
-            .sum()
-            .reset_index()
+            plot_df.set_index("Timestamp").resample("D")["Water"].sum().reset_index()
         )
 
         # Create figure with water consumption plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Plot Water Consumption as bars
+        # Plot Water Consumption as bars (daily)
         ax.bar(
             plot_df["Timestamp"],
             plot_df["Water"],
             color="#3498db",
-            width=0.02,  # Adjust bar width for better visibility
-            edgecolor="none",
+            width=0.8,  # Daily bar width
+            edgecolor="#2980b9",
+            linewidth=1.2,
         )
-        ax.set_xlabel("Date Time")
-        ax.set_ylabel("Water Consumption (L)")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Daily Water Consumption (L)")
         ax.set_title(
-            f"{get_display_label(lab_id, sublab_id)}: Water Consumption ({water_errors} errors excluded)"
+            f"{get_display_label(lab_id, sublab_id)}: Daily Water Consumption ({water_errors} errors excluded)"
         )
-        ax.grid(True, alpha=0.3)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
+        ax.grid(True, alpha=0.3, axis="y")
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
 
         fig.autofmt_xdate()
         plt.tight_layout()
