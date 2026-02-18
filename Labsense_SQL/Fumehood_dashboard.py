@@ -40,6 +40,9 @@ CONNECTION_STRING = (
 # Lab ID to name mapping
 LAB_NAMES = {1: "Lab -1.025", 2: "Lab -1.041"}
 
+# Sash opening threshold percentage (for determining "open" state)
+SASH_OPEN_THRESHOLD_PERCENT = 2.0
+
 # Fumehood calibration data: {(lab_id, sublab_id): {"fully_closed_mm": mm, "fully_open_mm": mm}}
 # Distance values for sash fully closed (0% open) and fully open (100% open)
 FUMEHOOD_CALIBRATION = {
@@ -423,20 +426,31 @@ def create_html_dashboard(
                 if not valid_sash_df.empty:
                     latest_sash_percent = valid_sash_df.iloc[0]["SashPercentOpen"]
 
-                    # Calculate hours per day sash was open (>= 25% open threshold)
-                    time_open = (valid_sash_df["SashPercentOpen"] >= 25).sum()
+                    # Calculate hours per day sash was open (> SASH_OPEN_THRESHOLD_PERCENT)
+                    time_open = (
+                        valid_sash_df["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT
+                    ).sum()
                     total_readings = len(valid_sash_df)
                     percent_time_open = (
                         (time_open / total_readings * 100) if total_readings > 0 else 0
                     )
                     # Convert percentage to hours per day
                     hours_per_day_sash_open = (percent_time_open / 100) * 24
-                    avg_sash_percent = valid_sash_df["SashPercentOpen"].mean()
+
+                    # Calculate average sash opening based on points above threshold only
+                    sash_above_threshold = valid_sash_df[
+                        valid_sash_df["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT
+                    ]
+                    avg_sash_percent = (
+                        sash_above_threshold["SashPercentOpen"].mean()
+                        if not sash_above_threshold.empty
+                        else None
+                    )
 
             # Calculate light on metrics if threshold data available
             has_light_threshold = (lab_id, sublab_id) in LIGHT_THRESHOLDS
             hours_per_day_fumehood_light_on = None
-            hours_per_day_room_light_on = None
+            hours_per_day_fumehood_open_room_lights_off = None
 
             if has_light_threshold:
                 # Calculate hours per day fumehood light was on
@@ -453,25 +467,36 @@ def create_html_dashboard(
                 # Convert percentage to hours per day
                 hours_per_day_fumehood_light_on = (percent_time_light_on / 100) * 24
 
-                # Calculate hours per day room lights were on (if threshold defined)
+                # Calculate hours per day fumehood is open AND room lights are off
                 if (
-                    "room_light_on_threshold_lux"
+                    has_calibration
+                    and not valid_sash_df.empty
+                    and "room_light_on_threshold_lux"
                     in LIGHT_THRESHOLDS[(lab_id, sublab_id)]
                 ):
-                    room_light_on_readings = (
-                        valid_df["Light"]
-                        > LIGHT_THRESHOLDS[(lab_id, sublab_id)][
-                            "room_light_on_threshold_lux"
-                        ]
+                    # Merge sash data with light data
+                    merged_df = valid_sash_df.copy()
+
+                    # Fumehood open (sash > threshold) AND room lights off
+                    fumehood_open_room_off_readings = (
+                        (merged_df["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT)
+                        & (
+                            merged_df["Light"]
+                            <= LIGHT_THRESHOLDS[(lab_id, sublab_id)][
+                                "room_light_on_threshold_lux"
+                            ]
+                        )
                     ).sum()
-                    percent_time_room_light_on = (
-                        (room_light_on_readings / total_light_readings * 100)
-                        if total_light_readings > 0
+
+                    total_merged_readings = len(merged_df)
+                    percent_time_open_room_off = (
+                        (fumehood_open_room_off_readings / total_merged_readings * 100)
+                        if total_merged_readings > 0
                         else 0
                     )
                     # Convert percentage to hours per day
-                    hours_per_day_room_light_on = (
-                        percent_time_room_light_on / 100
+                    hours_per_day_fumehood_open_room_lights_off = (
+                        percent_time_open_room_off / 100
                     ) * 24
 
             html_lines += [
@@ -542,12 +567,12 @@ def create_html_dashboard(
                         "        </div>",
                     ]
 
-                # Add room light on metric if available
-                if hours_per_day_room_light_on is not None:
+                # Add fumehood open + room lights off metric if available
+                if hours_per_day_fumehood_open_room_lights_off is not None:
                     html_lines += [
                         '        <div class="stat-card light">',
-                        "          <h3>Room Lights On</h3>",
-                        f'          <div class="value">{hours_per_day_room_light_on:.1f}</div>',
+                        "          <h3>Unattended Hood Open</h3>",
+                        f'          <div class="value">{hours_per_day_fumehood_open_room_lights_off:.1f}</div>',
                         '          <div class="unit">hrs/day</div>',
                         "        </div>",
                     ]
@@ -585,12 +610,12 @@ def create_html_dashboard(
                         "        </div>",
                     ]
 
-                # Add room light on metric if available
-                if hours_per_day_room_light_on is not None:
+                # Add fumehood open + room lights off metric if available
+                if hours_per_day_fumehood_open_room_lights_off is not None:
                     html_lines += [
                         '        <div class="stat-card light">',
-                        "          <h3>Room Lights On</h3>",
-                        f'          <div class="value">{hours_per_day_room_light_on:.1f}</div>',
+                        "          <h3>Unattended Hood Open</h3>",
+                        f'          <div class="value">{hours_per_day_fumehood_open_room_lights_off:.1f}</div>',
                         '          <div class="unit">hrs/day</div>',
                         "        </div>",
                     ]
