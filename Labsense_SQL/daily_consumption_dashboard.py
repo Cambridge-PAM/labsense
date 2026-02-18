@@ -198,15 +198,54 @@ def create_html_dashboard(
 
     # Calculate statistics
     if not df.empty:
+        df = df.copy()
+        df["Datestamp"] = pd.to_datetime(df["Datestamp"])
         total_consumption = df["Esum"].sum()
         avg_consumption = df["Esum"].mean()
         max_consumption = df["Esum"].max()
-        min_consumption = df["Esum"].min()
-        max_date = df.loc[df["Esum"].idxmax(), "Datestamp"].strftime("%Y-%m-%d")
-        min_date = df.loc[df["Esum"].idxmin(), "Datestamp"].strftime("%Y-%m-%d")
+        max_row = df.loc[df["Esum"].idxmax()]
+        max_date = pd.to_datetime(max_row["Datestamp"]).strftime("%Y-%m-%d")
         total_days = len(df)
 
         fun_context = kwh_in_context_three(avg_consumption)
+
+        # Linear trend fit over daily data: % decrease from fitted start to end.
+        trend_decrease_pct = 0.0
+        trend_subtext = "Insufficient data"
+        df_trend = df.sort_values("Datestamp")
+        if len(df_trend) >= 2:
+            x_days = (
+                df_trend["Datestamp"] - df_trend["Datestamp"].min()
+            ).dt.total_seconds() / 86400.0
+            y_kwh = pd.Series(
+                pd.to_numeric(df_trend["Esum"], errors="coerce"), index=df_trend.index
+            ).fillna(0.0)
+
+            n = float(len(x_days))
+            sum_x = float(x_days.sum())
+            sum_y = float(y_kwh.sum())
+            sum_xx = float((x_days * x_days).sum())
+            sum_xy = float((x_days * y_kwh).sum())
+            denom = n * sum_xx - (sum_x * sum_x)
+
+            if denom != 0:
+                slope = (n * sum_xy - sum_x * sum_y) / denom
+                intercept = (sum_y - slope * sum_x) / n
+
+                start_x = float(x_days.iloc[0])
+                end_x = float(x_days.iloc[-1])
+                start_fit = intercept + slope * start_x
+                end_fit = intercept + slope * end_x
+
+                if start_fit > 0:
+                    trend_change_pct = ((end_fit - start_fit) / start_fit) * 100
+                    trend_decrease_pct = -trend_change_pct
+                else:
+                    trend_decrease_pct = 0.0
+
+                start_date = df_trend.iloc[0]["Datestamp"].strftime("%Y-%m-%d")
+                end_date = df_trend.iloc[-1]["Datestamp"].strftime("%Y-%m-%d")
+                trend_subtext = f"Linear trend from {start_date} to {end_date}"
 
         # Calculate monthly averages
         df_monthly = df.copy()
@@ -214,11 +253,13 @@ def create_html_dashboard(
         monthly_avg = df_monthly.groupby("YearMonth")["Esum"].mean().reset_index()
         monthly_avg["YearMonth"] = monthly_avg["YearMonth"].astype(str)
     else:
-        total_consumption = avg_consumption = max_consumption = min_consumption = 0
-        max_date = min_date = "N/A"
+        total_consumption = avg_consumption = max_consumption = 0
+        max_date = "N/A"
         total_days = 0
         monthly_avg = pd.DataFrame()
         fun_context = {"kettles_boiled": 0, "ev_miles": 0, "blue_whale_lifts": 0}
+        trend_decrease_pct = 0.0
+        trend_subtext = "No data"
 
     html_lines = [
         "<!doctype html>",
@@ -286,10 +327,10 @@ def create_html_dashboard(
             f'        <div class="subtext">{max_date}</div>',
             "      </div>",
             '      <div class="stat-card green">',
-            "        <h3>Minimum Consumption</h3>",
-            f'        <div class="value">{min_consumption:.1f}</div>',
-            '        <div class="unit">kWh</div>',
-            f'        <div class="subtext">{min_date}</div>',
+            "        <h3>Consumption Decrease</h3>",
+            f'        <div class="value">{trend_decrease_pct:.1f}%</div>',
+            '        <div class="unit">linear-fit trend</div>',
+            f'        <div class="subtext">{trend_subtext}</div>',
             "      </div>",
             "    </div>",
             '    <div class="section">',
