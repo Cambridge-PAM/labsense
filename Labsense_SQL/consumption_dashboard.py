@@ -577,31 +577,6 @@ def create_html_dashboard(
             "    </div>",
         ]
 
-        # Granular consumption section (minute-level data for last week) - SHOWN FIRST
-        if "granular" in plot_files:
-            html_lines += [
-                '    <div class="section">',
-                "      <h2>Minute-Level Power Consumption (Last 7 Days)</h2>",
-            ]
-
-            if "idle_power_kw" in plot_files:
-                idle_kw = plot_files["idle_power_kw"]
-                html_lines += [
-                    '      <div class="summary">',
-                    f"        <p><strong>Idle Power (1am-5am average):</strong> {idle_kw:.2f} kW</p>",
-                    "        <p>The graph shows average power (kW) calculated from minute-level energy consumption data (kWh).</p>",
-                    "        <p>Total power and active power (with idle power subtracted) help identify when equipment is actively being used vs. baseline consumption.</p>",
-                    "      </div>",
-                ]
-
-            html_lines.append(
-                f'      <img src="{plot_files["granular"]}" alt="Minute-level power consumption" />'
-            )
-
-            html_lines += [
-                "    </div>",
-            ]
-
         # Daily Consumption Trends section
         html_lines += [
             '    <div class="section">',
