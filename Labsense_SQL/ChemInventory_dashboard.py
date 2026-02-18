@@ -116,32 +116,40 @@ def create_plots(data: Dict[str, pd.DataFrame], plot_dir: Path):
         # Convert Timestamp to datetime
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
 
+        # Convert absolute volumes to percentage composition for plotting
+        total_vol = df["RedVol"] + df["YellowVol"] + df["GreenVol"]
+        safe_total = total_vol.where(total_vol != 0, 1)
+        red_pct = (df["RedVol"] / safe_total) * 100
+        yellow_pct = (df["YellowVol"] / safe_total) * 100
+        green_pct = (df["GreenVol"] / safe_total) * 100
+
         # Create figure with single subplot for stacked volume
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 
-        # Stacked area chart
+        # Stacked area chart (% composition)
         ax.fill_between(
-            df["Timestamp"], 0, df["RedVol"], label="Red", color="#e74c3c", alpha=0.7
+            df["Timestamp"], 0, red_pct, label="Red", color="#e74c3c", alpha=0.7
         )
         ax.fill_between(
             df["Timestamp"],
-            df["RedVol"],
-            df["RedVol"] + df["YellowVol"],
+            red_pct,
+            red_pct + yellow_pct,
             label="Yellow",
             color="#f39c12",
             alpha=0.7,
         )
         ax.fill_between(
             df["Timestamp"],
-            df["RedVol"] + df["YellowVol"],
-            df["RedVol"] + df["YellowVol"] + df["GreenVol"],
+            red_pct + yellow_pct,
+            red_pct + yellow_pct + green_pct,
             label="Green",
             color="#27ae60",
             alpha=0.7,
         )
         ax.set_xlabel("Date")
-        ax.set_ylabel("Volume (L)")
-        ax.set_title(f"{display_name} - Volume by Category (Stacked)")
+        ax.set_ylabel("Percentage (%)")
+        ax.set_title(f"{display_name} - Percentage by Category (Stacked)")
+        ax.set_ylim(0, 100)
         ax.legend()
         ax.grid(True, alpha=0.3)
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
