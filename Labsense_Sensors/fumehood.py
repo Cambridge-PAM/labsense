@@ -1,21 +1,36 @@
+"""Fumehood sensor monitor.
+
+Reads distance and ambient light sensors, publishes measurements to MQTT,
+attempts sensor recovery on repeated zero-distance faults, and reboots the Pi
+only when recovery fails.
+"""
+
 import asyncio
 import time
 import sys
 import signal
-import numpy as np
 from datetime import datetime
-import VL53L1X  # distance sensor
-from ltr559 import LTR559  # light & proximity sensor
 import paho.mqtt.publish as publish
 import os
+import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 import logging
-from typing import Optional
+from typing import Any, Optional
+
+try:
+    import VL53L1X  # type: ignore[reportMissingImports]  # distance sensor
+except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
+    VL53L1X = None
+
+try:
+    from ltr559 import LTR559  # type: ignore[reportMissingImports]  # light sensor
+except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
+    LTR559 = None
 
 # Configure logging
 log_file = Path(__file__).parent / "fumehood.log"
-handlers = [logging.StreamHandler()]
+handlers: list[logging.Handler] = [logging.StreamHandler()]
 
 try:
     handlers.append(logging.FileHandler(log_file))
@@ -32,7 +47,7 @@ logger = logging.getLogger(__name__)
 # Load environment variables from .env file
 env_path = Path(__file__).parent / ".env"
 if not env_path.exists():
-    logger.error(f".env file not found at {env_path}")
+    logger.error(".env file not found at %s", env_path)
     sys.exit(1)
 
 load_dotenv(dotenv_path=env_path)
@@ -54,6 +69,10 @@ TOF_RANGING_MODE = int(os.getenv("TOF_RANGING_MODE", "1"))  # 1=Short, 2=Medium,
 
 # Measurement Configuration
 MEASUREMENT_INTERVAL = int(os.getenv("MEASUREMENT_INTERVAL", "30"))
+ZERO_DISTANCE_REBOOT_THRESHOLD = int(
+    os.getenv("ZERO_DISTANCE_REBOOT_THRESHOLD", "10")
+)
+ZERO_LIGHT_REINIT_THRESHOLD = int(os.getenv("ZERO_LIGHT_REINIT_THRESHOLD", "5"))
 
 # Sensor Validation Configuration
 DISTANCE_MIN_MM = int(os.getenv("DISTANCE_MIN_MM", "0"))  # Minimum valid distance in mm
@@ -73,94 +92,109 @@ if not MQTT_SERVER:
     sys.exit(1)
 
 logger.info("Configuration loaded successfully")
-logger.info(f"MQTT Server: {MQTT_SERVER}:{MQTT_PORT}, Path: {MQTT_PATH}")
-logger.info(f"Lab ID: {LAB_ID}, Sublab ID: {SUBLAB_ID}")
+logger.info("MQTT Server: %s:%s, Path: %s", MQTT_SERVER, MQTT_PORT, MQTT_PATH)
+logger.info("Lab ID: %s, Sublab ID: %s", LAB_ID, SUBLAB_ID)
 
 # Global sensor objects
-tof = None
-ltr559 = None
-shutdown_flag = False
+state: dict[str, Any] = {
+    "tof": None,
+    "ltr559": None,
+    "shutdown_flag": False,
+}
 
 
 def initialize_sensors() -> bool:
     """Initialize all sensors with error handling"""
-    global tof, ltr559
-
     success = True
 
-    # Initialize distance sensor (VL53L1X)
-    try:
-        logger.info(
-            f"Initializing distance sensor on I2C bus {TOF_I2C_BUS}, address {hex(TOF_I2C_ADDRESS)}"
-        )
-        tof = VL53L1X.VL53L1X(i2c_bus=TOF_I2C_BUS, i2c_address=TOF_I2C_ADDRESS)
-        tof.open()
-        tof.start_ranging(TOF_RANGING_MODE)
-        logger.info(f"Distance sensor initialized (ranging mode: {TOF_RANGING_MODE})")
-    except Exception as e:
-        logger.error(f"Failed to initialize distance sensor: {e}")
-        tof = None
+    if VL53L1X is None:
+        logger.error("VL53L1X module not available; distance sensor disabled")
+        state["tof"] = None
+        success = False
+    if LTR559 is None:
+        logger.error("ltr559 module not available; light sensor disabled")
+        state["ltr559"] = None
         success = False
 
+    # Initialize distance sensor (VL53L1X)
+    if VL53L1X is not None:
+        try:
+            logger.info(
+                "Initializing distance sensor on I2C bus %s, address %s",
+                TOF_I2C_BUS,
+                hex(TOF_I2C_ADDRESS),
+            )
+            state["tof"] = VL53L1X.VL53L1X(
+                i2c_bus=TOF_I2C_BUS, i2c_address=TOF_I2C_ADDRESS
+            )
+            state["tof"].open()
+            state["tof"].start_ranging(TOF_RANGING_MODE)
+            logger.info(
+                "Distance sensor initialized (ranging mode: %s)", TOF_RANGING_MODE
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.error("Failed to initialize distance sensor: %s", e)
+            state["tof"] = None
+            success = False
+
     # Initialize light sensor (LTR559)
-    try:
-        logger.info("Initializing light sensor")
-        ltr559 = LTR559()
-        logger.info("Light sensor initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize light sensor: {e}")
-        ltr559 = None
-        success = False
+    if LTR559 is not None:
+        try:
+            logger.info("Initializing light sensor")
+            state["ltr559"] = LTR559()
+            logger.info("Light sensor initialized")
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.error("Failed to initialize light sensor: %s", e)
+            state["ltr559"] = None
+            success = False
 
     return success
 
 
 def cleanup_sensors():
     """Clean up sensor resources"""
-    global tof
-
-    if tof is not None:
+    if state["tof"] is not None:
         try:
-            tof.stop_ranging()
-            tof.close()
+            state["tof"].stop_ranging()
+            state["tof"].close()
             logger.info("Distance sensor cleaned up")
-        except Exception as e:
-            logger.warning(f"Error cleaning up distance sensor: {e}")
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.warning("Error cleaning up distance sensor: %s", e)
+        finally:
+            state["tof"] = None
 
     # LTR559 doesn't require explicit cleanup
+    state["ltr559"] = None
     logger.info("Sensors cleaned up")
 
 
-def signal_handler(signum, frame):
+def signal_handler(signum, _frame):
     """Handle shutdown signals gracefully"""
-    global shutdown_flag
-    logger.info(f"Received signal {signum}. Shutting down gracefully...")
-    shutdown_flag = True
+    logger.info("Received signal %s. Shutting down gracefully...", signum)
+    state["shutdown_flag"] = True
     cleanup_sensors()
     sys.exit(0)
 
 
 def read_distance_sensor() -> Optional[float]:
     """Read distance from TOF sensor with error handling"""
-    global tof
-
+    tof = state["tof"]
     if tof is None:
         logger.warning("Distance sensor not initialized")
         return None
 
     try:
         distance = tof.get_distance()
-        logger.debug(f"Distance reading: {distance} mm")
+        logger.debug("Distance reading: %s mm", distance)
         return float(distance)
-    except Exception as e:
-        logger.error(f"Error reading distance sensor: {e}")
+    except (OSError, RuntimeError, ValueError, TypeError) as e:
+        logger.error("Error reading distance sensor: %s", e)
         return None
 
 
 def read_light_sensor() -> Optional[float]:
     """Read light level from LTR559 sensor with error handling"""
-    global ltr559
-
+    ltr559 = state["ltr559"]
     if ltr559 is None:
         logger.warning("Light sensor not initialized")
         return None
@@ -168,10 +202,10 @@ def read_light_sensor() -> Optional[float]:
     try:
         ltr559.update_sensor()
         lux = ltr559.get_lux()
-        logger.debug(f"Light reading: {lux} lux")
+        logger.debug("Light reading: %s lux", lux)
         return float(lux)
-    except Exception as e:
-        logger.error(f"Error reading light sensor: {e}")
+    except (OSError, RuntimeError, ValueError, TypeError) as e:
+        logger.error("Error reading light sensor: %s", e)
         return None
 
 
@@ -180,10 +214,7 @@ def validate_distance(distance: Optional[float]) -> bool:
     if distance is None:
         return False
     if distance < DISTANCE_MIN_MM or distance > DISTANCE_MAX_MM:
-        logger.warning(
-            f"Distance reading {distance} mm is outside valid range "
-            f"({DISTANCE_MIN_MM}-{DISTANCE_MAX_MM} mm)"
-        )
+        logger.warning("Distance reading is outside valid range")
         return False
     return True
 
@@ -194,8 +225,10 @@ def validate_light(lux: Optional[float]) -> bool:
         return False
     if lux < LIGHT_MIN_LUX or lux > LIGHT_MAX_LUX:
         logger.warning(
-            f"Light level reading {lux} lux is outside valid range "
-            f"({LIGHT_MIN_LUX}-{LIGHT_MAX_LUX} lux)"
+            "Light level reading %s lux is outside valid range (%s-%s lux)",
+            lux,
+            LIGHT_MIN_LUX,
+            LIGHT_MAX_LUX,
         )
         return False
     return True
@@ -212,26 +245,55 @@ def publish_mqtt(msg_payload: str, retry_count: int = 3) -> bool:
                 port=MQTT_PORT,
                 keepalive=MQTT_TIMEOUT,
             )
-            logger.info(f"MQTT message published successfully")
-            logger.debug(f"Payload: {msg_payload}")
+            logger.info("MQTT message published successfully")
+            logger.debug("Payload: %s", msg_payload)
             return True
 
         except ConnectionRefusedError:
             logger.error(
-                f"MQTT connection refused (attempt {attempt}/{retry_count}): "
-                f"Check if MQTT broker is running at {MQTT_SERVER}:{MQTT_PORT}"
+                "MQTT connection refused: Check if MQTT broker is running"
             )
         except TimeoutError:
             logger.error(
-                f"MQTT timeout (attempt {attempt}/{retry_count}): "
-                f"Broker not responding at {MQTT_SERVER}:{MQTT_PORT}"
+                "MQTT timeout (attempt %s/%s): Broker not responding at %s:%s",
+                attempt,
+                retry_count,
+                MQTT_SERVER,
+                MQTT_PORT,
             )
-        except Exception as e:
-            logger.error(f"MQTT publish error (attempt {attempt}/{retry_count}): {e}")
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.error(
+                "MQTT publish error (attempt %s/%s): %s",
+                attempt,
+                retry_count,
+                e,
+            )
 
         if attempt < retry_count:
             time.sleep(2)
 
+    return False
+
+
+def reboot_pi(reason: str):
+    """Reboot Raspberry Pi after critical sensor fault"""
+    logger.critical(reason)
+    cleanup_sensors()
+    try:
+        subprocess.run(["sudo", "reboot"], check=False)
+    except (OSError, RuntimeError, ValueError, TypeError) as e:
+        logger.error("Failed to execute reboot command: %s", e)
+
+
+def recover_sensors() -> bool:
+    """Attempt sensor recovery before rebooting the Pi"""
+    logger.warning("Attempting sensor re-initialization before reboot")
+    cleanup_sensors()
+    time.sleep(2)
+    if initialize_sensors():
+        logger.info("Sensor re-initialization successful")
+        return True
+    logger.error("Sensor re-initialization failed")
     return False
 
 
@@ -242,11 +304,13 @@ async def main():
     iteration = 0
     consecutive_errors = 0
     max_consecutive_errors = 5
+    consecutive_zero_distance = 0
+    consecutive_zero_light = 0
 
-    while not shutdown_flag:
+    while not state["shutdown_flag"]:
         try:
             iteration += 1
-            logger.debug(f"Starting measurement iteration {iteration}")
+            logger.debug("Starting measurement iteration %s", iteration)
 
             time_send = datetime.now()
 
@@ -255,12 +319,53 @@ async def main():
             lux = read_light_sensor()
             airflow = 0.0  # Placeholder for future airflow sensor
 
+            # Reboot if repeated zero distance readings indicate sensor lockup
+            if distance == 0.0:
+                consecutive_zero_distance += 1
+                logger.warning(
+                    "Zero distance reading detected (%s/%s)",
+                    consecutive_zero_distance,
+                    ZERO_DISTANCE_REBOOT_THRESHOLD,
+                )
+                if consecutive_zero_distance >= ZERO_DISTANCE_REBOOT_THRESHOLD:
+                    if recover_sensors():
+                        consecutive_zero_distance = 0
+                        consecutive_errors = 0
+                        continue
+                    reboot_pi(
+                        "Repeated 0.0 mm distance readings detected and recovery "
+                        "failed; rebooting Pi"
+                    )
+                    break
+            else:
+                consecutive_zero_distance = 0
+
+            # Re-initialize sensors on repeated zero light readings
+            if lux == 0.0:
+                consecutive_zero_light += 1
+                logger.warning(
+                    "Zero light reading detected (%s/%s)",
+                    consecutive_zero_light,
+                    ZERO_LIGHT_REINIT_THRESHOLD,
+                )
+                if consecutive_zero_light >= ZERO_LIGHT_REINIT_THRESHOLD:
+                    if recover_sensors():
+                        consecutive_zero_light = 0
+                        consecutive_errors = 0
+                        continue
+                    logger.error(
+                        "Repeated 0.0 lux readings detected and recovery failed"
+                    )
+            else:
+                consecutive_zero_light = 0
+
             # Log readings
             logger.info(
-                f"Readings at {time_send.strftime('%Y-%m-%d %H:%M:%S')}: "
-                f"distance={distance if distance is not None else 'N/A'} mm, "
-                f"light={lux if lux is not None else 'N/A'} lux, "
-                f"airflow={airflow}"
+                "Readings at %s: distance=%s mm, light=%s lux, airflow=%s",
+                time_send.strftime("%Y-%m-%d %H:%M:%S"),
+                distance if distance is not None else "N/A",
+                lux if lux is not None else "N/A",
+                airflow,
             )
 
             # Validate sensor readings
@@ -289,8 +394,9 @@ async def main():
                 else:
                     consecutive_errors += 1
                     logger.warning(
-                        f"Failed to publish MQTT message "
-                        f"({consecutive_errors}/{max_consecutive_errors})"
+                        "Failed to publish MQTT message (%s/%s)",
+                        consecutive_errors,
+                        max_consecutive_errors,
                     )
             else:
                 logger.warning(
@@ -301,8 +407,9 @@ async def main():
             # Check for too many consecutive errors
             if consecutive_errors >= max_consecutive_errors:
                 logger.error(
-                    f"Too many consecutive failures ({consecutive_errors}). "
-                    "Check sensor connections and MQTT broker."
+                    "Too many consecutive failures (%s). "
+                    "Check sensor connections and MQTT broker.",
+                    consecutive_errors,
                 )
                 consecutive_errors = 0  # Reset to avoid log spam
 
@@ -315,8 +422,8 @@ async def main():
         except KeyboardInterrupt:
             logger.info("Keyboard interrupt received")
             break
-        except Exception as e:
-            logger.error(f"Error in main loop: {e}", exc_info=True)
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.error("Error in main loop: %s", e, exc_info=True)
             consecutive_errors += 1
             await asyncio.sleep(5)  # Backoff on error
 
@@ -342,7 +449,7 @@ def run():
                 "Some sensors failed to initialize. Continuing with available sensors..."
             )
 
-        if tof is None and ltr559 is None:
+        if state["tof"] is None and state["ltr559"] is None:
             logger.error("All sensors failed to initialize. Exiting.")
             sys.exit(1)
 
@@ -352,8 +459,8 @@ def run():
 
     except KeyboardInterrupt:
         logger.info("Script interrupted by user")
-    except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
+    except (OSError, RuntimeError, ValueError, TypeError) as e:
+        logger.error("Fatal error: %s", e, exc_info=True)
         sys.exit(1)
     finally:
         logger.info("Cleaning up resources...")
