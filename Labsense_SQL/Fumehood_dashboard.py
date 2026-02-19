@@ -184,13 +184,13 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if lab_df.empty:
             continue
 
-        # Count errors (negative values)
+        # Count errors (negative distance values and light values below 1 lux)
         distance_errors = (lab_df["Distance"] < 0).sum()
-        light_errors = (lab_df["Light"] < 0).sum()
+        light_errors = (lab_df["Light"] < 1).sum()
         total_errors = distance_errors + light_errors
 
-        # Filter to valid data only (non-negative values)
-        plot_df = lab_df[(lab_df["Distance"] >= 0) & (lab_df["Light"] >= 0)]
+        # Filter to valid data only (non-negative distance and light >= 1 lux)
+        plot_df = lab_df[(lab_df["Distance"] >= 0) & (lab_df["Light"] >= 1)]
 
         if plot_df.empty:
             continue
@@ -372,13 +372,13 @@ def create_html_dashboard(
             if lab_df.empty:
                 continue
 
-            # Count errors (negative values)
+            # Count errors (negative distance values and light values below 1 lux)
             distance_errors = (lab_df["Distance"] < 0).sum()
-            light_errors = (lab_df["Light"] < 0).sum()
+            light_errors = (lab_df["Light"] < 1).sum()
             total_errors = distance_errors + light_errors
 
-            # Filter to valid data only (non-negative values) for statistics
-            valid_df = lab_df[(lab_df["Distance"] >= 0) & (lab_df["Light"] >= 0)]
+            # Filter to valid data only (non-negative distance and light >= 1 lux) for statistics
+            valid_df = lab_df[(lab_df["Distance"] >= 0) & (lab_df["Light"] >= 1)]
 
             # Get latest valid reading
             if valid_df.empty:
