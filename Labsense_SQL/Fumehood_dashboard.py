@@ -184,10 +184,9 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if lab_df.empty:
             continue
 
-        # Count errors (negative distance values and light values below 1 lux)
+        # Count errors separately (negative distance values and light values below 1 lux)
         distance_errors = (lab_df["Distance"] < 0).sum()
         light_errors = (lab_df["Light"] < 1).sum()
-        total_errors = distance_errors + light_errors
 
         # Filter to valid data only (non-negative distance and light >= 1 lux)
         plot_df = lab_df[(lab_df["Distance"] >= 0) & (lab_df["Light"] >= 1)]
@@ -230,7 +229,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             ax1.set_ylim(0, 100)
             sash_error_count = (lab_df["Distance"] < 0).sum()
             ax1.set_title(
-                f"{get_display_label(lab_id, sublab_id)}: Sash Opening ({total_errors} errors excluded)"
+                f"{get_display_label(lab_id, sublab_id)}: Sash Opening ({distance_errors} distance errors, {light_errors} light errors excluded)"
             )
         else:
             ax1.plot(
@@ -244,7 +243,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             )
             ax1.set_ylabel("Distance (mm)")
             ax1.set_title(
-                f"{get_display_label(lab_id, sublab_id)}: Sash Raw Distance ({total_errors} errors excluded)"
+                f"{get_display_label(lab_id, sublab_id)}: Sash Raw Distance ({distance_errors} distance errors, {light_errors} light errors excluded)"
             )
         ax1.grid(True, alpha=0.3)
         ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
@@ -262,7 +261,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         ax2.set_xlabel("Date Time")
         ax2.set_ylabel("Light (lux)")
         ax2.set_title(
-            f"{get_display_label(lab_id, sublab_id)}: Light Level ({total_errors} errors excluded)"
+            f"{get_display_label(lab_id, sublab_id)}: Light Level ({distance_errors} distance errors, {light_errors} light errors excluded)"
         )
         ax2.grid(True, alpha=0.3)
         ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
@@ -372,10 +371,9 @@ def create_html_dashboard(
             if lab_df.empty:
                 continue
 
-            # Count errors (negative distance values and light values below 1 lux)
+            # Count errors separately (negative distance values and light values below 1 lux)
             distance_errors = (lab_df["Distance"] < 0).sum()
             light_errors = (lab_df["Light"] < 1).sum()
-            total_errors = distance_errors + light_errors
 
             # Filter to valid data only (non-negative distance and light >= 1 lux) for statistics
             valid_df = lab_df[(lab_df["Distance"] >= 0) & (lab_df["Light"] >= 1)]
@@ -520,7 +518,7 @@ def create_html_dashboard(
                 )
 
             html_lines += [
-                f"        <p><strong>Data Quality:</strong> {total_errors} error(s) detected and excluded from analysis</p>",
+                f"        <p><strong>Data Quality:</strong> {distance_errors} distance error(s) and {light_errors} light error(s) detected and excluded from analysis</p>",
                 "      </div>",
                 '      <div class="stats-grid">',
             ]
