@@ -36,7 +36,7 @@ if not EMONCMS_API_KEY:
 
 
 def create_table_if_not_exists():
-    """Create the elecDaily table if it doesn't exist."""
+    """Create the elecMinute table if it doesn't exist."""
     try:
         connection = pyodbc.connect(connection_string)
         cursor = connection.cursor()
@@ -44,14 +44,14 @@ def create_table_if_not_exists():
             """
             IF 
             ( NOT EXISTS 
-            (select object_id from sys.objects where object_id = OBJECT_ID(N'[elecDaily]') and type = 'U')
+            (select object_id from sys.objects where object_id = OBJECT_ID(N'[elecMinute]') and type = 'U')
             )
             BEGIN
-                CREATE TABLE elecDaily
+                CREATE TABLE elecMinute
                 (
                     id INT NOT NULL IDENTITY(1,1) PRIMARY KEY,
-                    Esum REAL,
-                    Datestamp DATE
+                    EnergyValue REAL,
+                    Timestamp DATETIME
                 )
             END
             """
@@ -63,44 +63,73 @@ def create_table_if_not_exists():
         raise
 
 
-def insert_sql(daily_consumption, date):
-    """Insert daily consumption data for a specific date."""
+def insert_sql(datapoints):
+    """Insert minute-level consumption data.
+
+    Args:
+        datapoints: List of [timestamp_ms, cumulative_energy] pairs from API
+
+    Returns:
+        tuple: (success_count, skip_count)
+    """
+    if not datapoints or len(datapoints) < 2:
+        return 0, 0
+
     try:
         connection = pyodbc.connect(connection_string)
         cursor = connection.cursor()
 
-        # Check if record already exists for this date
-        cursor.execute("SELECT COUNT(*) FROM elecDaily WHERE Datestamp = ?", (date,))
-        if cursor.fetchone()[0] > 0:
-            print(f"Record for {date} already exists, skipping...")
-            connection.close()
-            return False
+        success_count = 0
+        skip_count = 0
 
-        cursor.execute(
-            """
-            INSERT INTO elecDaily (Esum, Datestamp)
-            VALUES (?,?)""",
-            (daily_consumption, date),
-        )
+        # Calculate interval energy by subtracting consecutive cumulative values
+        for i in range(1, len(datapoints)):
+            prev_timestamp_ms, prev_cumulative = datapoints[i - 1]
+            curr_timestamp_ms, curr_cumulative = datapoints[i]
+
+            if prev_cumulative is None or curr_cumulative is None:
+                continue
+
+            # Energy consumed during this interval (difference between cumulative values)
+            interval_energy = curr_cumulative - prev_cumulative
+
+            # Convert millisecond timestamp to datetime (use current timestamp as interval end)
+            timestamp = datetime.datetime.fromtimestamp(curr_timestamp_ms / 1000)
+
+            # Check if record already exists for this timestamp
+            cursor.execute(
+                "SELECT COUNT(*) FROM elecMinute WHERE Timestamp = ?", (timestamp,)
+            )
+            if cursor.fetchone()[0] > 0:
+                skip_count += 1
+                continue
+
+            cursor.execute(
+                """
+                INSERT INTO elecMinute (EnergyValue, Timestamp)
+                VALUES (?,?)""",
+                (interval_energy, timestamp),
+            )
+            success_count += 1
 
         connection.commit()
         connection.close()
-        return True
+        return success_count, skip_count
 
     except pyodbc.Error as ex:
-        print(f"An error occurred in SQL Server for date {date}:", ex)
-        return False
+        print(f"An error occurred in SQL Server:", ex)
+        return 0, 0
 
 
-def get_daily_consumption_for_date(target_date):
+def get_minute_data_for_date(target_date):
     """
-    Get daily consumption for a specific date.
+    Get minute-level data for a specific date.
 
     Args:
-        target_date: datetime.date object for the day to get consumption
+        target_date: datetime.date object for the day to get data
 
     Returns:
-        float: Daily consumption value, or None if failed
+        list: List of [timestamp_ms, cumulative_energy] pairs, or None if failed
     """
     try:
         # Start of target date
@@ -113,26 +142,23 @@ def get_daily_consumption_for_date(target_date):
         )
         end_timestamp_ms = int(end_datetime.timestamp()) * 1000
 
-        url_daily = (
-            "http://10.247.40.36/feed/data.json?id=21&start="
+        url_minute = (
+            "http://10.247.40.36/feed/average.json?id=21&start="
             + str(start_timestamp_ms)
             + "&end="
             + str(end_timestamp_ms)
-            + f"&mode=daily&apikey={EMONCMS_API_KEY}"
+            + f"&interval=60&apikey={EMONCMS_API_KEY}"
         )
 
-        response_daily = urlopen(url_daily)
-        data_json_daily = json.loads(response_daily.read())
+        response = urlopen(url_minute)
+        data_json = json.loads(response.read())
 
-        if len(data_json_daily) < 2:
-            print(f"Insufficient data for {target_date}")
+        if not data_json:
+            print(f"No data returned for {target_date}")
             return None
 
-        e_sum_start = data_json_daily[0][1]
-        e_sum_end = data_json_daily[1][1]
-        daily_consumption = e_sum_end - e_sum_start
-
-        return daily_consumption
+        # data_json is a list of [timestamp_ms, value] pairs
+        return data_json
 
     except Exception as ex:
         print(f"Error fetching data for {target_date}:", ex)
@@ -141,7 +167,7 @@ def get_daily_consumption_for_date(target_date):
 
 def process_date_range(start_date, end_date):
     """
-    Process daily consumption for a range of dates.
+    Process minute-level consumption for a range of dates.
 
     Args:
         start_date: datetime.date object for the first day
@@ -150,34 +176,33 @@ def process_date_range(start_date, end_date):
     create_table_if_not_exists()
 
     current_date = start_date
-    success_count = 0
-    skip_count = 0
+    total_success = 0
+    total_skip = 0
     error_count = 0
 
     while current_date <= end_date:
         print(f"Processing {current_date}...")
 
-        daily_consumption = get_daily_consumption_for_date(current_date)
+        datapoints = get_minute_data_for_date(current_date)
 
-        if daily_consumption is not None:
-            if insert_sql(daily_consumption, current_date):
-                print(f"  Inserted: {daily_consumption} kWh for {current_date}")
-                success_count += 1
-            else:
-                skip_count += 1
+        if datapoints is not None:
+            success, skip = insert_sql(datapoints)
+            print(f"  Inserted: {success} records, Skipped: {skip} duplicates")
+            total_success += success
+            total_skip += skip
         else:
             error_count += 1
 
         current_date += datetime.timedelta(days=1)
 
     print(
-        f"\nSummary: {success_count} inserted, {skip_count} skipped, {error_count} errors"
+        f"\nSummary: {total_success} records inserted, {total_skip} skipped, {error_count} days with errors"
     )
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Insert daily electricity consumption data into SQL Server. "
+        description="Insert minute-level electricity consumption data into SQL Server. "
         "By default, inserts data for yesterday only."
     )
     parser.add_argument(

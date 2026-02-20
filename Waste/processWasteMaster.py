@@ -33,9 +33,7 @@ from Labsense_SQL.constants import to_litre
 # `to_litre` moved to `Labsense_SQL.constants` to avoid duplication.
 
 
-DEFAULT_PATH = Path(
-    r"Z:\\LabsenseDashboard\\Waste Master.xlsx"
-)
+DEFAULT_PATH = Path(r"Z:\\LabsenseDashboard\\Waste Master.xlsx")
 
 
 def load_df(path: Path) -> pd.DataFrame:
@@ -96,16 +94,25 @@ def compute_hp_volume(df: pd.DataFrame) -> pd.DataFrame:
     df["Size_numeric"] = size_numeric.fillna(0.0)  # type: ignore
     df["volume_l"] = df["Size_numeric"] * df["unit_mult"]
 
-    results = []
-    for date, group in df.groupby("Date"):
-        for hp in hp_cols:
-            # treat hp column as numeric flag or fraction
-            hp_series = pd.to_numeric(group[hp], errors="coerce")
-            vals = hp_series.fillna(0)  # type: ignore
-            # sum volume weighted by presence
-            total_l = (vals * group["volume_l"]).sum()
-            results.append({"Date": date, "HP Number": hp, "Volume(L)": total_l})
-    res_df = pd.DataFrame(results)
+    # Allocate each row volume proportionally across all active HP flags to avoid
+    # double counting. For example, a 2.5 L row with HP1=1 and HP2=1 contributes
+    # 1.25 L to HP1 and 1.25 L to HP2.
+    hp_numeric = df[hp_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+    hp_active = hp_numeric.gt(0)
+    active_counts = pd.Series(hp_active.sum(axis=1), index=df.index, dtype="float64")
+
+    # Rows with no active HP flags should contribute zero to all HP totals.
+    allocation_base = df["volume_l"] / active_counts.replace(0, pd.NA)
+    allocated = hp_active.mul(allocation_base, axis=0).fillna(0.0)
+
+    allocated_with_date = allocated.assign(Date=df["Date"])
+    res_df = (
+        allocated_with_date.melt(
+            id_vars="Date", var_name="HP Number", value_name="Volume(L)"
+        )
+        .groupby(["Date", "HP Number"], as_index=False)["Volume(L)"]
+        .sum()
+    )
     return res_df
 
 
@@ -125,6 +132,25 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
 
     plot_dir = Path(plot_dir)
     plot_dir.mkdir(parents=True, exist_ok=True)
+
+    # HP code to 1-word description mapping for legend labels
+    hp_labels = {
+        "HP1": "Explosive",
+        "HP2": "Oxidizing",
+        "HP3": "Flammable",
+        "HP4": "Irritant",
+        "HP5": "Harmful",
+        "HP6": "Toxic",
+        "HP7": "Carcinogenic",
+        "HP8": "Corrosive",
+        "HP9": "Infectious",
+        "HP10": "Toxic for reproductive",
+        "HP11": "Mutagenic",
+        "HP12": "Acute toxic gas release",
+        "HP13": "Sensitizing",
+        "HP14": "Ecotoxic",
+        "HP15": "Indirect",
+    }
 
     # Prepare pivot tables for HP volumes
     pivot = res_df.copy()
@@ -185,6 +211,8 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
     present_hps_q = [c for c in hp_cols if c in pivot_q_pct.columns]
     if present_hps_q:
         pivot_q_pct_sel = pivot_q_pct[present_hps_q]
+        # Rename columns to use descriptive labels
+        pivot_q_pct_sel = pivot_q_pct_sel.rename(columns=hp_labels)
         fig, ax = plt.subplots(figsize=(12, 6))
         pivot_q_pct_sel.plot(kind="bar", stacked=True, ax=ax, colormap="tab20")
         ax.set_title(
@@ -196,7 +224,7 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
         ax.set_ylabel("Percentage (%)")
         ax.set_ylim(0, 100)
         plt.xticks(rotation=45, ha="right")
-        plt.legend(title="HP Code", bbox_to_anchor=(1.05, 1), loc="upper left")
+        plt.legend(title="Hazard Property", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fqs = plot_dir / f"{clean_prefix}_by_quarter_stacked.png"
         fig.savefig(fqs)
@@ -229,6 +257,8 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
     present_hps_y = [c for c in hp_cols if c in pivot_y_pct.columns]
     if present_hps_y:
         pivot_y_pct_sel = pivot_y_pct[present_hps_y]
+        # Rename columns to use descriptive labels
+        pivot_y_pct_sel = pivot_y_pct_sel.rename(columns=hp_labels)
         fig, ax = plt.subplots(figsize=(10, 6))
         pivot_y_pct_sel.plot(kind="bar", stacked=True, ax=ax, colormap="tab20")
         ax.set_title(
@@ -240,7 +270,7 @@ def create_summary_plots(res_df: pd.DataFrame, out_prefix: str, plot_dir: Path):
         ax.set_ylabel("Percentage (%)")
         ax.set_ylim(0, 100)
         plt.xticks(rotation=0)
-        plt.legend(title="HP Code", bbox_to_anchor=(1.05, 1), loc="upper left")
+        plt.legend(title="Hazard Property", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fys = plot_dir / f"{clean_prefix}_by_year_stacked.png"
         fig.savefig(fys)

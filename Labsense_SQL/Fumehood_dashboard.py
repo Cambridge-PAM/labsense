@@ -40,6 +40,9 @@ CONNECTION_STRING = (
 # Lab ID to name mapping
 LAB_NAMES = {1: "Lab -1.025", 2: "Lab -1.041"}
 
+# Sash opening threshold percentage (for determining "open" state)
+SASH_OPEN_THRESHOLD_PERCENT = 2.0
+
 # Fumehood calibration data: {(lab_id, sublab_id): {"fully_closed_mm": mm, "fully_open_mm": mm}}
 # Distance values for sash fully closed (0% open) and fully open (100% open)
 FUMEHOOD_CALIBRATION = {
@@ -181,31 +184,32 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if lab_df.empty:
             continue
 
-        # Count errors (negative values)
+        # Count errors separately (negative distance values and light values below 1 lux)
         distance_errors = (lab_df["Distance"] < 0).sum()
-        light_errors = (lab_df["Light"] < 0).sum()
-        total_errors = distance_errors + light_errors
+        light_errors = (lab_df["Light"] < 1).sum()
 
-        # Filter to valid data only (non-negative values)
-        plot_df = lab_df[(lab_df["Distance"] >= 0) & (lab_df["Light"] >= 0)]
+        # Filter data separately by sensor type
+        distance_df = lab_df[lab_df["Distance"] >= 0]
+        light_df = lab_df[lab_df["Light"] >= 1]
 
-        if plot_df.empty:
+        # Check if we have any valid data for either sensor
+        if distance_df.empty and light_df.empty:
             continue
 
         # Check if we have calibration data for this fumehood
         has_calibration = (lab_id, sublab_id) in FUMEHOOD_CALIBRATION
 
-        if has_calibration:
-            # Calculate sash opening percentage for each point
-            plot_df = plot_df.copy()
-            plot_df["SashPercentOpen"] = plot_df["Distance"].apply(
+        # Prepare distance data for plotting
+        plot_distance_df = distance_df.copy() if not distance_df.empty else None
+        if has_calibration and plot_distance_df is not None:
+            plot_distance_df["SashPercentOpen"] = plot_distance_df["Distance"].apply(
                 lambda d: calculate_sash_percentage_open(d, lab_id, sublab_id)
             )
-            # Filter to valid percentage values only (0-100)
-            plot_df = plot_df[plot_df["SashPercentOpen"].notna()]
-
-            if plot_df.empty:
-                continue
+            plot_distance_df = plot_distance_df[
+                plot_distance_df["SashPercentOpen"].notna()
+            ]
+            if plot_distance_df.empty:
+                plot_distance_df = None
 
         # Create figure with two subplots (Sash % / Distance and Light)
         fig, (ax1, ax2) = plt.subplots(
@@ -213,10 +217,10 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         )
 
         # Plot Sash Opening Percentage or Distance
-        if has_calibration:
+        if has_calibration and plot_distance_df is not None:
             ax1.plot(
-                plot_df["Timestamp"],
-                plot_df["SashPercentOpen"],
+                plot_distance_df["Timestamp"],
+                plot_distance_df["SashPercentOpen"],
                 marker="o",
                 linestyle="-",
                 color="#3498db",
@@ -225,14 +229,13 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             )
             ax1.set_ylabel("Sash Opening (%)")
             ax1.set_ylim(0, 100)
-            sash_error_count = (lab_df["Distance"] < 0).sum()
             ax1.set_title(
-                f"{get_display_label(lab_id, sublab_id)}: Sash Opening ({total_errors} errors excluded)"
+                f"{get_display_label(lab_id, sublab_id)}: Sash Opening ({distance_errors} distance errors excluded)"
             )
-        else:
+        elif not distance_df.empty:
             ax1.plot(
-                plot_df["Timestamp"],
-                plot_df["Distance"],
+                distance_df["Timestamp"],
+                distance_df["Distance"],
                 marker="o",
                 linestyle="-",
                 color="#3498db",
@@ -241,25 +244,26 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             )
             ax1.set_ylabel("Distance (mm)")
             ax1.set_title(
-                f"{get_display_label(lab_id, sublab_id)}: Sash Raw Distance ({total_errors} errors excluded)"
+                f"{get_display_label(lab_id, sublab_id)}: Sash Raw Distance ({distance_errors} distance errors excluded)"
             )
         ax1.grid(True, alpha=0.3)
         ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
 
         # Plot Light
-        ax2.plot(
-            plot_df["Timestamp"],
-            plot_df["Light"],
-            marker="s",
-            linestyle="-",
-            color="#e74c3c",
-            linewidth=2,
-            markersize=4,
-        )
+        if not light_df.empty:
+            ax2.plot(
+                light_df["Timestamp"],
+                light_df["Light"],
+                marker="s",
+                linestyle="-",
+                color="#e74c3c",
+                linewidth=2,
+                markersize=4,
+            )
         ax2.set_xlabel("Date Time")
         ax2.set_ylabel("Light (lux)")
         ax2.set_title(
-            f"{get_display_label(lab_id, sublab_id)}: Light Level ({total_errors} errors excluded)"
+            f"{get_display_label(lab_id, sublab_id)}: Light Level ({light_errors} light errors excluded)"
         )
         ax2.grid(True, alpha=0.3)
         ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
@@ -369,40 +373,50 @@ def create_html_dashboard(
             if lab_df.empty:
                 continue
 
-            # Count errors (negative values)
+            # Count errors separately (negative distance values and light values below 1 lux)
             distance_errors = (lab_df["Distance"] < 0).sum()
-            light_errors = (lab_df["Light"] < 0).sum()
-            total_errors = distance_errors + light_errors
+            light_errors = (lab_df["Light"] < 1).sum()
 
-            # Filter to valid data only (non-negative values) for statistics
-            valid_df = lab_df[(lab_df["Distance"] >= 0) & (lab_df["Light"] >= 0)]
+            # Filter to valid data separately for each sensor
+            valid_distance_df = lab_df[lab_df["Distance"] >= 0]
+            valid_light_df = lab_df[lab_df["Light"] >= 1]
 
-            # Get latest valid reading
-            if valid_df.empty:
-                latest = lab_df.iloc[0]
+            # Get latest valid readings
+            latest_distance = None
+            latest_light = None
+            latest_airflow = None
+            latest_time = lab_df.iloc[0]["Timestamp"]  # Use latest time from all data
+
+            if not valid_distance_df.empty:
+                latest_distance = valid_distance_df.iloc[0]["Distance"]
             else:
-                latest = valid_df.iloc[0]
+                latest_distance = lab_df.iloc[0]["Distance"]
 
-            latest_distance = latest["Distance"]
-            latest_light = latest["Light"]
-            latest_airflow = latest["Airflow"]
-            latest_time = latest["Timestamp"]
+            if not valid_light_df.empty:
+                latest_light = valid_light_df.iloc[0]["Light"]
+            else:
+                latest_light = lab_df.iloc[0]["Light"]
 
-            # Calculate statistics from valid data only
-            if valid_df.empty:
+            latest_airflow = lab_df.iloc[0]["Airflow"]
+
+            # Calculate statistics separately for each sensor from valid data only
+            if valid_distance_df.empty:
                 avg_distance = lab_df["Distance"].mean()
                 max_distance = lab_df["Distance"].max()
                 min_distance = lab_df["Distance"].min()
+            else:
+                avg_distance = valid_distance_df["Distance"].mean()
+                max_distance = valid_distance_df["Distance"].max()
+                min_distance = valid_distance_df["Distance"].min()
+
+            if valid_light_df.empty:
                 avg_light = lab_df["Light"].mean()
                 max_light = lab_df["Light"].max()
                 min_light = lab_df["Light"].min()
             else:
-                avg_distance = valid_df["Distance"].mean()
-                max_distance = valid_df["Distance"].max()
-                min_distance = valid_df["Distance"].min()
-                avg_light = valid_df["Light"].mean()
-                max_light = valid_df["Light"].max()
-                min_light = valid_df["Light"].min()
+                avg_light = valid_light_df["Light"].mean()
+                max_light = valid_light_df["Light"].max()
+                min_light = valid_light_df["Light"].min()
 
             # Calculate sash opening metrics if calibration data available
             has_calibration = (lab_id, sublab_id) in FUMEHOOD_CALIBRATION
@@ -412,8 +426,8 @@ def create_html_dashboard(
             latest_sash_percent = None
 
             if has_calibration:
-                # Calculate sash opening for all valid data points
-                valid_df_copy = valid_df.copy()
+                # Calculate sash opening for all valid distance data points
+                valid_df_copy = valid_distance_df.copy()
                 valid_df_copy["SashPercentOpen"] = valid_df_copy["Distance"].apply(
                     lambda d: calculate_sash_percentage_open(d, lab_id, sublab_id)
                 )
@@ -423,28 +437,39 @@ def create_html_dashboard(
                 if not valid_sash_df.empty:
                     latest_sash_percent = valid_sash_df.iloc[0]["SashPercentOpen"]
 
-                    # Calculate hours per day sash was open (>= 25% open threshold)
-                    time_open = (valid_sash_df["SashPercentOpen"] >= 25).sum()
+                    # Calculate hours per day sash was open (> SASH_OPEN_THRESHOLD_PERCENT)
+                    time_open = (
+                        valid_sash_df["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT
+                    ).sum()
                     total_readings = len(valid_sash_df)
                     percent_time_open = (
                         (time_open / total_readings * 100) if total_readings > 0 else 0
                     )
                     # Convert percentage to hours per day
                     hours_per_day_sash_open = (percent_time_open / 100) * 24
-                    avg_sash_percent = valid_sash_df["SashPercentOpen"].mean()
+
+                    # Calculate average sash opening based on points above threshold only
+                    sash_above_threshold = valid_sash_df[
+                        valid_sash_df["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT
+                    ]
+                    avg_sash_percent = (
+                        sash_above_threshold["SashPercentOpen"].mean()
+                        if not sash_above_threshold.empty
+                        else None
+                    )
 
             # Calculate light on metrics if threshold data available
             has_light_threshold = (lab_id, sublab_id) in LIGHT_THRESHOLDS
             hours_per_day_fumehood_light_on = None
-            hours_per_day_room_light_on = None
+            hours_per_day_fumehood_open_room_lights_off = None
 
             if has_light_threshold:
                 # Calculate hours per day fumehood light was on
                 light_on_readings = (
-                    valid_df["Light"]
+                    valid_light_df["Light"]
                     > LIGHT_THRESHOLDS[(lab_id, sublab_id)]["light_on_threshold_lux"]
                 ).sum()
-                total_light_readings = len(valid_df)
+                total_light_readings = len(valid_light_df)
                 percent_time_light_on = (
                     (light_on_readings / total_light_readings * 100)
                     if total_light_readings > 0
@@ -453,25 +478,37 @@ def create_html_dashboard(
                 # Convert percentage to hours per day
                 hours_per_day_fumehood_light_on = (percent_time_light_on / 100) * 24
 
-                # Calculate hours per day room lights were on (if threshold defined)
+                # Calculate hours per day fumehood is open AND room lights are off
                 if (
-                    "room_light_on_threshold_lux"
+                    has_calibration
+                    and "valid_sash_df" in locals()
+                    and not valid_sash_df.empty
+                    and "room_light_on_threshold_lux"
                     in LIGHT_THRESHOLDS[(lab_id, sublab_id)]
                 ):
-                    room_light_on_readings = (
-                        valid_df["Light"]
-                        > LIGHT_THRESHOLDS[(lab_id, sublab_id)][
-                            "room_light_on_threshold_lux"
-                        ]
+                    # Merge sash data with light data
+                    merged_df = valid_sash_df.copy()
+
+                    # Fumehood open (sash > threshold) AND room lights off
+                    fumehood_open_room_off_readings = (
+                        (merged_df["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT)
+                        & (
+                            merged_df["Light"]
+                            <= LIGHT_THRESHOLDS[(lab_id, sublab_id)][
+                                "room_light_on_threshold_lux"
+                            ]
+                        )
                     ).sum()
-                    percent_time_room_light_on = (
-                        (room_light_on_readings / total_light_readings * 100)
-                        if total_light_readings > 0
+
+                    total_merged_readings = len(merged_df)
+                    percent_time_open_room_off = (
+                        (fumehood_open_room_off_readings / total_merged_readings * 100)
+                        if total_merged_readings > 0
                         else 0
                     )
                     # Convert percentage to hours per day
-                    hours_per_day_room_light_on = (
-                        percent_time_room_light_on / 100
+                    hours_per_day_fumehood_open_room_lights_off = (
+                        percent_time_open_room_off / 100
                     ) * 24
 
             html_lines += [
@@ -495,7 +532,7 @@ def create_html_dashboard(
                 )
 
             html_lines += [
-                f"        <p><strong>Data Quality:</strong> {total_errors} error(s) detected and excluded from analysis</p>",
+                f"        <p><strong>Data Quality:</strong> {distance_errors} distance error(s) and {light_errors} light error(s) detected and excluded from analysis</p>",
                 "      </div>",
                 '      <div class="stats-grid">',
             ]
@@ -542,12 +579,12 @@ def create_html_dashboard(
                         "        </div>",
                     ]
 
-                # Add room light on metric if available
-                if hours_per_day_room_light_on is not None:
+                # Add fumehood open + room lights off metric if available
+                if hours_per_day_fumehood_open_room_lights_off is not None:
                     html_lines += [
                         '        <div class="stat-card light">',
-                        "          <h3>Room Lights On</h3>",
-                        f'          <div class="value">{hours_per_day_room_light_on:.1f}</div>',
+                        "          <h3>Unattended Hood Open</h3>",
+                        f'          <div class="value">{hours_per_day_fumehood_open_room_lights_off:.1f}</div>',
                         '          <div class="unit">hrs/day</div>',
                         "        </div>",
                     ]
@@ -585,12 +622,12 @@ def create_html_dashboard(
                         "        </div>",
                     ]
 
-                # Add room light on metric if available
-                if hours_per_day_room_light_on is not None:
+                # Add fumehood open + room lights off metric if available
+                if hours_per_day_fumehood_open_room_lights_off is not None:
                     html_lines += [
                         '        <div class="stat-card light">',
-                        "          <h3>Room Lights On</h3>",
-                        f'          <div class="value">{hours_per_day_room_light_on:.1f}</div>',
+                        "          <h3>Unattended Hood Open</h3>",
+                        f'          <div class="value">{hours_per_day_fumehood_open_room_lights_off:.1f}</div>',
                         '          <div class="unit">hrs/day</div>',
                         "        </div>",
                     ]
