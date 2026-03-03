@@ -123,6 +123,9 @@ PROACTIVE_REINIT_INTERVAL_SECONDS = int(
 )
 ZERO_DISTANCE_REBOOT_THRESHOLD = int(os.getenv("ZERO_DISTANCE_REBOOT_THRESHOLD", "10"))
 ZERO_LIGHT_REINIT_THRESHOLD = int(os.getenv("ZERO_LIGHT_REINIT_THRESHOLD", "5"))
+IDENTICAL_LIGHT_REINIT_THRESHOLD = int(
+    os.getenv("IDENTICAL_LIGHT_REINIT_THRESHOLD", "5")
+)
 
 # Sensor Validation Configuration
 DISTANCE_MIN_MM = int(os.getenv("DISTANCE_MIN_MM", "0"))  # Minimum valid distance in mm
@@ -533,6 +536,8 @@ async def main():
     consecutive_zero_distance = 0
     consecutive_zero_light = 0
     consecutive_light_read_errors = 0
+    consecutive_identical_light = 0
+    last_light_value: Optional[float] = None
     last_recovery_monotonic = time.monotonic()
 
     while not state["shutdown_flag"]:
@@ -552,6 +557,8 @@ async def main():
                         consecutive_zero_distance = 0
                         consecutive_zero_light = 0
                         consecutive_light_read_errors = 0
+                        consecutive_identical_light = 0
+                        last_light_value = None
                         consecutive_errors = 0
                         continue
                     logger.warning("Proactive sensor re-initialization failed")
@@ -579,6 +586,8 @@ async def main():
                         last_recovery_monotonic = time.monotonic()
                         consecutive_zero_light = 0
                         consecutive_light_read_errors = 0
+                        consecutive_identical_light = 0
+                        last_light_value = None
                         consecutive_errors = 0
                         continue
                     logger.error(
@@ -600,6 +609,8 @@ async def main():
                         last_recovery_monotonic = time.monotonic()
                         consecutive_zero_distance = 0
                         consecutive_light_read_errors = 0
+                        consecutive_identical_light = 0
+                        last_light_value = None
                         consecutive_errors = 0
                         continue
                     reboot_pi(
@@ -623,6 +634,8 @@ async def main():
                         last_recovery_monotonic = time.monotonic()
                         consecutive_zero_light = 0
                         consecutive_light_read_errors = 0
+                        consecutive_identical_light = 0
+                        last_light_value = None
                         consecutive_errors = 0
                         continue
                     logger.error(
@@ -630,6 +643,43 @@ async def main():
                     )
             else:
                 consecutive_zero_light = 0
+
+            # Re-initialize sensors on repeated identical light readings
+            if lux is not None and lux == last_light_value:
+                consecutive_identical_light += 1
+                logger.debug(
+                    "Identical light reading detected: %s lux (%s/%s)",
+                    lux,
+                    consecutive_identical_light,
+                    IDENTICAL_LIGHT_REINIT_THRESHOLD,
+                )
+                if (
+                    IDENTICAL_LIGHT_REINIT_THRESHOLD > 0
+                    and consecutive_identical_light >= IDENTICAL_LIGHT_REINIT_THRESHOLD
+                ):
+                    logger.warning(
+                        "Reinitializing sensors due to %s identical light readings: %s lux",
+                        consecutive_identical_light,
+                        lux,
+                    )
+                    if recover_sensors():
+                        last_recovery_monotonic = time.monotonic()
+                        consecutive_zero_light = 0
+                        consecutive_light_read_errors = 0
+                        consecutive_identical_light = 0
+                        last_light_value = None
+                        consecutive_errors = 0
+                        continue
+                    logger.error(
+                        "Repeated identical light readings detected and recovery failed"
+                    )
+            else:
+                if lux is not None:
+                    consecutive_identical_light = 1
+                    last_light_value = lux
+                else:
+                    consecutive_identical_light = 0
+                    last_light_value = None
 
             # Log readings
             logger.info(
