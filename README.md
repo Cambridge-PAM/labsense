@@ -87,6 +87,46 @@ LOG_LEVEL=INFO                  # Logging level (default: INFO)
 
 The `.env` file is automatically loaded by all modules. Each module loads the `.env` file from the repository root, ensuring centralized configuration management.
 
+### Fumehood sensor tuning (`Labsense_Sensors/.env`)
+
+The fumehood script (`Labsense_Sensors/fumehood.py`) uses a local `.env` file in `Labsense_Sensors/` for sensor and MQTT settings.
+
+Recommended starter values for improved VL53L1X stability:
+
+```env
+# Optional explicit timing (set both to non-zero to enable set_timing + start_ranging(0))
+TOF_TIMING_BUDGET_US=50000
+TOF_INTER_MEASUREMENT_MS=70
+
+# Initialization/recovery stabilization
+SENSOR_STABILIZE_DELAY_SECONDS=1.0
+DISTANCE_WARMUP_DISCARD_COUNT=2
+DISTANCE_WARMUP_DISCARD_DELAY_SECONDS=0.05
+
+# Per-cycle filtering and transient zero mitigation
+DISTANCE_SAMPLE_COUNT=3
+DISTANCE_SAMPLE_DELAY_SECONDS=0.03
+DISTANCE_ZERO_RETRY_COUNT=1
+DISTANCE_ZERO_RETRY_DELAY_SECONDS=0.05
+LIGHT_SAMPLE_COUNT=3
+LIGHT_SAMPLE_DELAY_SECONDS=0.03
+LIGHT_ZERO_RETRY_COUNT=1
+LIGHT_ZERO_RETRY_DELAY_SECONDS=0.05
+
+# Light warm-up discard
+LIGHT_WARMUP_DISCARD_COUNT=2
+LIGHT_WARMUP_DISCARD_DELAY_SECONDS=0.05
+
+# Optional periodic proactive reinit (0 disables)
+PROACTIVE_REINIT_INTERVAL_SECONDS=0
+```
+
+Notes:
+- Keep `TOF_TIMING_BUDGET_US <= TOF_INTER_MEASUREMENT_MS * 1000`.
+- If you still see occasional zeros, increase `DISTANCE_SAMPLE_COUNT` to `5` before increasing reboot thresholds.
+- If lights can legitimately be off/dark, keep `LIGHT_ZERO_RETRY_COUNT` low (for example `1`) to avoid masking real zero-lux conditions.
+- Start with `PROACTIVE_REINIT_INTERVAL_SECONDS=0`; only enable periodic reinit if long-running lockups persist.
+
 ## Usage
 
 Different modules can be deployed based on use case:

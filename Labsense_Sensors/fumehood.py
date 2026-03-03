@@ -9,6 +9,7 @@ import asyncio
 import time
 import sys
 import signal
+import statistics
 from datetime import datetime
 import paho.mqtt.publish as publish
 import os
@@ -66,12 +67,40 @@ SUBLAB_ID = int(os.getenv("SUBLAB_ID", "3"))
 TOF_I2C_BUS = int(os.getenv("TOF_I2C_BUS", "1"))
 TOF_I2C_ADDRESS = int(os.getenv("TOF_I2C_ADDRESS", "0x29"), 16)
 TOF_RANGING_MODE = int(os.getenv("TOF_RANGING_MODE", "1"))  # 1=Short, 2=Medium, 3=Long
+TOF_TIMING_BUDGET_US = int(os.getenv("TOF_TIMING_BUDGET_US", "0"))
+TOF_INTER_MEASUREMENT_MS = int(os.getenv("TOF_INTER_MEASUREMENT_MS", "0"))
 
 # Measurement Configuration
 MEASUREMENT_INTERVAL = int(os.getenv("MEASUREMENT_INTERVAL", "30"))
-ZERO_DISTANCE_REBOOT_THRESHOLD = int(
-    os.getenv("ZERO_DISTANCE_REBOOT_THRESHOLD", "10")
+SENSOR_STABILIZE_DELAY_SECONDS = float(
+    os.getenv("SENSOR_STABILIZE_DELAY_SECONDS", "1.0")
 )
+DISTANCE_SAMPLE_COUNT = int(os.getenv("DISTANCE_SAMPLE_COUNT", "3"))
+DISTANCE_SAMPLE_DELAY_SECONDS = float(
+    os.getenv("DISTANCE_SAMPLE_DELAY_SECONDS", "0.03")
+)
+DISTANCE_ZERO_RETRY_COUNT = int(os.getenv("DISTANCE_ZERO_RETRY_COUNT", "1"))
+DISTANCE_ZERO_RETRY_DELAY_SECONDS = float(
+    os.getenv("DISTANCE_ZERO_RETRY_DELAY_SECONDS", "0.05")
+)
+DISTANCE_WARMUP_DISCARD_COUNT = int(os.getenv("DISTANCE_WARMUP_DISCARD_COUNT", "2"))
+DISTANCE_WARMUP_DISCARD_DELAY_SECONDS = float(
+    os.getenv("DISTANCE_WARMUP_DISCARD_DELAY_SECONDS", "0.05")
+)
+LIGHT_SAMPLE_COUNT = int(os.getenv("LIGHT_SAMPLE_COUNT", "3"))
+LIGHT_SAMPLE_DELAY_SECONDS = float(os.getenv("LIGHT_SAMPLE_DELAY_SECONDS", "0.03"))
+LIGHT_ZERO_RETRY_COUNT = int(os.getenv("LIGHT_ZERO_RETRY_COUNT", "1"))
+LIGHT_ZERO_RETRY_DELAY_SECONDS = float(
+    os.getenv("LIGHT_ZERO_RETRY_DELAY_SECONDS", "0.05")
+)
+LIGHT_WARMUP_DISCARD_COUNT = int(os.getenv("LIGHT_WARMUP_DISCARD_COUNT", "2"))
+LIGHT_WARMUP_DISCARD_DELAY_SECONDS = float(
+    os.getenv("LIGHT_WARMUP_DISCARD_DELAY_SECONDS", "0.05")
+)
+PROACTIVE_REINIT_INTERVAL_SECONDS = int(
+    os.getenv("PROACTIVE_REINIT_INTERVAL_SECONDS", "0")
+)
+ZERO_DISTANCE_REBOOT_THRESHOLD = int(os.getenv("ZERO_DISTANCE_REBOOT_THRESHOLD", "10"))
 ZERO_LIGHT_REINIT_THRESHOLD = int(os.getenv("ZERO_LIGHT_REINIT_THRESHOLD", "5"))
 
 # Sensor Validation Configuration
@@ -128,7 +157,16 @@ def initialize_sensors() -> bool:
                 i2c_bus=TOF_I2C_BUS, i2c_address=TOF_I2C_ADDRESS
             )
             state["tof"].open()
-            state["tof"].start_ranging(TOF_RANGING_MODE)
+            if TOF_TIMING_BUDGET_US > 0 and TOF_INTER_MEASUREMENT_MS > 0:
+                state["tof"].set_timing(TOF_TIMING_BUDGET_US, TOF_INTER_MEASUREMENT_MS)
+                state["tof"].start_ranging(0)
+                logger.info(
+                    "Distance sensor explicit timing enabled (budget=%sus, inter=%sms)",
+                    TOF_TIMING_BUDGET_US,
+                    TOF_INTER_MEASUREMENT_MS,
+                )
+            else:
+                state["tof"].start_ranging(TOF_RANGING_MODE)
             logger.info(
                 "Distance sensor initialized (ranging mode: %s)", TOF_RANGING_MODE
             )
@@ -183,13 +221,111 @@ def read_distance_sensor() -> Optional[float]:
         logger.warning("Distance sensor not initialized")
         return None
 
+    sample_count = max(DISTANCE_SAMPLE_COUNT, 1)
+    samples: list[float] = []
+
     try:
-        distance = tof.get_distance()
-        logger.debug("Distance reading: %s mm", distance)
-        return float(distance)
+        for sample_index in range(1, sample_count + 1):
+            distance = _read_distance_once_with_zero_retry(tof)
+            if distance is not None:
+                samples.append(distance)
+
+            if sample_index < sample_count:
+                time.sleep(DISTANCE_SAMPLE_DELAY_SECONDS)
+
+        if not samples:
+            return None
+
+        non_zero_samples = [sample for sample in samples if sample != 0.0]
+        if non_zero_samples:
+            aggregated_distance = float(statistics.median(non_zero_samples))
+        else:
+            aggregated_distance = 0.0
+
+        logger.debug(
+            "Distance samples=%s, aggregated distance=%s mm",
+            samples,
+            aggregated_distance,
+        )
+        return aggregated_distance
     except (OSError, RuntimeError, ValueError, TypeError) as e:
         logger.error("Error reading distance sensor: %s", e)
         return None
+
+
+def _read_distance_once_with_zero_retry(tof) -> Optional[float]:
+    """Read one distance sample, retrying transient zero values."""
+    attempts = 1 + max(DISTANCE_ZERO_RETRY_COUNT, 0)
+    for attempt in range(1, attempts + 1):
+        distance = float(tof.get_distance())
+        logger.debug(
+            "Distance raw reading (attempt %s/%s): %s mm", attempt, attempts, distance
+        )
+
+        if distance != 0.0:
+            return distance
+
+        if attempt < attempts:
+            logger.debug(
+                "Zero distance reading; retrying in %s seconds",
+                DISTANCE_ZERO_RETRY_DELAY_SECONDS,
+            )
+            time.sleep(DISTANCE_ZERO_RETRY_DELAY_SECONDS)
+
+    return 0.0
+
+
+def stabilize_sensors(context: str = "startup"):
+    """Wait briefly after sensor (re)initialization to allow stable readings."""
+    if SENSOR_STABILIZE_DELAY_SECONDS <= 0:
+        return
+    logger.info(
+        "Waiting %s seconds for sensor stabilization (%s)",
+        SENSOR_STABILIZE_DELAY_SECONDS,
+        context,
+    )
+    time.sleep(SENSOR_STABILIZE_DELAY_SECONDS)
+
+
+def warmup_sensors(context: str = "startup"):
+    """Discard initial readings after init/recovery to reduce startup transients."""
+    if state["tof"] is not None and DISTANCE_WARMUP_DISCARD_COUNT > 0:
+        logger.info(
+            "Discarding first %s distance readings for warm-up (%s)",
+            DISTANCE_WARMUP_DISCARD_COUNT,
+            context,
+        )
+
+        for attempt in range(1, DISTANCE_WARMUP_DISCARD_COUNT + 1):
+            warmup_distance = read_distance_sensor()
+            logger.debug(
+                "Warm-up distance reading %s/%s: %s mm",
+                attempt,
+                DISTANCE_WARMUP_DISCARD_COUNT,
+                warmup_distance,
+            )
+
+            if attempt < DISTANCE_WARMUP_DISCARD_COUNT:
+                time.sleep(DISTANCE_WARMUP_DISCARD_DELAY_SECONDS)
+
+    if state["ltr559"] is not None and LIGHT_WARMUP_DISCARD_COUNT > 0:
+        logger.info(
+            "Discarding first %s light readings for warm-up (%s)",
+            LIGHT_WARMUP_DISCARD_COUNT,
+            context,
+        )
+
+        for attempt in range(1, LIGHT_WARMUP_DISCARD_COUNT + 1):
+            warmup_lux = read_light_sensor()
+            logger.debug(
+                "Warm-up light reading %s/%s: %s lux",
+                attempt,
+                LIGHT_WARMUP_DISCARD_COUNT,
+                warmup_lux,
+            )
+
+            if attempt < LIGHT_WARMUP_DISCARD_COUNT:
+                time.sleep(LIGHT_WARMUP_DISCARD_DELAY_SECONDS)
 
 
 def read_light_sensor() -> Optional[float]:
@@ -199,14 +335,55 @@ def read_light_sensor() -> Optional[float]:
         logger.warning("Light sensor not initialized")
         return None
 
+    sample_count = max(LIGHT_SAMPLE_COUNT, 1)
+    samples: list[float] = []
+
     try:
-        ltr559.update_sensor()
-        lux = ltr559.get_lux()
-        logger.debug("Light reading: %s lux", lux)
-        return float(lux)
+        for sample_index in range(1, sample_count + 1):
+            lux = _read_light_once_with_zero_retry(ltr559)
+            if lux is not None:
+                samples.append(lux)
+
+            if sample_index < sample_count:
+                time.sleep(LIGHT_SAMPLE_DELAY_SECONDS)
+
+        if not samples:
+            return None
+
+        non_zero_samples = [sample for sample in samples if sample != 0.0]
+        if non_zero_samples:
+            aggregated_lux = float(statistics.median(non_zero_samples))
+        else:
+            aggregated_lux = 0.0
+
+        logger.debug("Light samples=%s, aggregated lux=%s", samples, aggregated_lux)
+        return aggregated_lux
     except (OSError, RuntimeError, ValueError, TypeError) as e:
         logger.error("Error reading light sensor: %s", e)
         return None
+
+
+def _read_light_once_with_zero_retry(ltr559) -> Optional[float]:
+    """Read one light sample, retrying transient zero values."""
+    attempts = 1 + max(LIGHT_ZERO_RETRY_COUNT, 0)
+    for attempt in range(1, attempts + 1):
+        ltr559.update_sensor()
+        lux = float(ltr559.get_lux())
+        logger.debug(
+            "Light raw reading (attempt %s/%s): %s lux", attempt, attempts, lux
+        )
+
+        if lux != 0.0:
+            return lux
+
+        if attempt < attempts:
+            logger.debug(
+                "Zero light reading; retrying in %s seconds",
+                LIGHT_ZERO_RETRY_DELAY_SECONDS,
+            )
+            time.sleep(LIGHT_ZERO_RETRY_DELAY_SECONDS)
+
+    return 0.0
 
 
 def validate_distance(distance: Optional[float]) -> bool:
@@ -250,9 +427,7 @@ def publish_mqtt(msg_payload: str, retry_count: int = 3) -> bool:
             return True
 
         except ConnectionRefusedError:
-            logger.error(
-                "MQTT connection refused: Check if MQTT broker is running"
-            )
+            logger.error("MQTT connection refused: Check if MQTT broker is running")
         except TimeoutError:
             logger.error(
                 "MQTT timeout (attempt %s/%s): Broker not responding at %s:%s",
@@ -291,6 +466,8 @@ def recover_sensors() -> bool:
     cleanup_sensors()
     time.sleep(2)
     if initialize_sensors():
+        stabilize_sensors("recovery")
+        warmup_sensors("recovery")
         logger.info("Sensor re-initialization successful")
         return True
     logger.error("Sensor re-initialization failed")
@@ -306,11 +483,27 @@ async def main():
     max_consecutive_errors = 5
     consecutive_zero_distance = 0
     consecutive_zero_light = 0
+    last_recovery_monotonic = time.monotonic()
 
     while not state["shutdown_flag"]:
         try:
             iteration += 1
             logger.debug("Starting measurement iteration %s", iteration)
+
+            if PROACTIVE_REINIT_INTERVAL_SECONDS > 0:
+                elapsed_since_recovery = time.monotonic() - last_recovery_monotonic
+                if elapsed_since_recovery >= PROACTIVE_REINIT_INTERVAL_SECONDS:
+                    logger.info(
+                        "Proactive sensor re-initialization triggered after %s seconds",
+                        PROACTIVE_REINIT_INTERVAL_SECONDS,
+                    )
+                    if recover_sensors():
+                        last_recovery_monotonic = time.monotonic()
+                        consecutive_zero_distance = 0
+                        consecutive_zero_light = 0
+                        consecutive_errors = 0
+                        continue
+                    logger.warning("Proactive sensor re-initialization failed")
 
             time_send = datetime.now()
 
@@ -329,6 +522,7 @@ async def main():
                 )
                 if consecutive_zero_distance >= ZERO_DISTANCE_REBOOT_THRESHOLD:
                     if recover_sensors():
+                        last_recovery_monotonic = time.monotonic()
                         consecutive_zero_distance = 0
                         consecutive_errors = 0
                         continue
@@ -350,6 +544,7 @@ async def main():
                 )
                 if consecutive_zero_light >= ZERO_LIGHT_REINIT_THRESHOLD:
                     if recover_sensors():
+                        last_recovery_monotonic = time.monotonic()
                         consecutive_zero_light = 0
                         consecutive_errors = 0
                         continue
@@ -452,6 +647,9 @@ def run():
         if state["tof"] is None and state["ltr559"] is None:
             logger.error("All sensors failed to initialize. Exiting.")
             sys.exit(1)
+
+        stabilize_sensors("startup")
+        warmup_sensors("startup")
 
         # Run main async loop
         logger.info("Starting main monitoring loop")
