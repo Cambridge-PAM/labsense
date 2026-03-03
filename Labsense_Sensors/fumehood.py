@@ -107,9 +107,16 @@ LIGHT_ZERO_RETRY_COUNT = int(os.getenv("LIGHT_ZERO_RETRY_COUNT", "1"))
 LIGHT_ZERO_RETRY_DELAY_SECONDS = float(
     os.getenv("LIGHT_ZERO_RETRY_DELAY_SECONDS", "0.05")
 )
+LIGHT_I2C_ERROR_RETRY_COUNT = int(os.getenv("LIGHT_I2C_ERROR_RETRY_COUNT", "2"))
+LIGHT_I2C_ERROR_RETRY_DELAY_SECONDS = float(
+    os.getenv("LIGHT_I2C_ERROR_RETRY_DELAY_SECONDS", "0.1")
+)
 LIGHT_WARMUP_DISCARD_COUNT = int(os.getenv("LIGHT_WARMUP_DISCARD_COUNT", "2"))
 LIGHT_WARMUP_DISCARD_DELAY_SECONDS = float(
     os.getenv("LIGHT_WARMUP_DISCARD_DELAY_SECONDS", "0.05")
+)
+LIGHT_READ_ERROR_REINIT_THRESHOLD = int(
+    os.getenv("LIGHT_READ_ERROR_REINIT_THRESHOLD", "3")
 )
 PROACTIVE_REINIT_INTERVAL_SECONDS = int(
     os.getenv("PROACTIVE_REINIT_INTERVAL_SECONDS", "0")
@@ -380,9 +387,32 @@ def read_light_sensor() -> Optional[float]:
 def _read_light_once_with_zero_retry(ltr559) -> Optional[float]:
     """Read one light sample, retrying transient zero values."""
     attempts = 1 + max(LIGHT_ZERO_RETRY_COUNT, 0)
+    i2c_attempts = 1 + max(LIGHT_I2C_ERROR_RETRY_COUNT, 0)
+
     for attempt in range(1, attempts + 1):
-        ltr559.update_sensor()
-        lux = float(ltr559.get_lux())
+        lux: Optional[float] = None
+
+        for i2c_attempt in range(1, i2c_attempts + 1):
+            try:
+                ltr559.update_sensor()
+                lux = float(ltr559.get_lux())
+                break
+            except OSError as error:
+                if _is_remote_i2c_error(error) and i2c_attempt < i2c_attempts:
+                    logger.warning(
+                        "Light I2C read error (attempt %s/%s): %s. Retrying in %s seconds",
+                        i2c_attempt,
+                        i2c_attempts,
+                        error,
+                        LIGHT_I2C_ERROR_RETRY_DELAY_SECONDS,
+                    )
+                    time.sleep(LIGHT_I2C_ERROR_RETRY_DELAY_SECONDS)
+                    continue
+                raise
+
+        if lux is None:
+            return None
+
         logger.debug(
             "Light raw reading (attempt %s/%s): %s lux", attempt, attempts, lux
         )
@@ -398,6 +428,11 @@ def _read_light_once_with_zero_retry(ltr559) -> Optional[float]:
             time.sleep(LIGHT_ZERO_RETRY_DELAY_SECONDS)
 
     return 0.0
+
+
+def _is_remote_i2c_error(error: OSError) -> bool:
+    """Check whether an OSError corresponds to transient I2C remote I/O failures."""
+    return error.errno == 121 or "Remote I/O error" in str(error)
 
 
 def validate_distance(distance: Optional[float]) -> bool:
@@ -497,6 +532,7 @@ async def main():
     max_consecutive_errors = 5
     consecutive_zero_distance = 0
     consecutive_zero_light = 0
+    consecutive_light_read_errors = 0
     last_recovery_monotonic = time.monotonic()
 
     while not state["shutdown_flag"]:
@@ -515,6 +551,7 @@ async def main():
                         last_recovery_monotonic = time.monotonic()
                         consecutive_zero_distance = 0
                         consecutive_zero_light = 0
+                        consecutive_light_read_errors = 0
                         consecutive_errors = 0
                         continue
                     logger.warning("Proactive sensor re-initialization failed")
@@ -525,6 +562,30 @@ async def main():
             distance = read_distance_sensor()
             lux = read_light_sensor()
             airflow = 0.0  # Placeholder for future airflow sensor
+
+            if lux is None:
+                consecutive_light_read_errors += 1
+                logger.warning(
+                    "Light sensor read failed (%s/%s)",
+                    consecutive_light_read_errors,
+                    LIGHT_READ_ERROR_REINIT_THRESHOLD,
+                )
+                if (
+                    LIGHT_READ_ERROR_REINIT_THRESHOLD > 0
+                    and consecutive_light_read_errors
+                    >= LIGHT_READ_ERROR_REINIT_THRESHOLD
+                ):
+                    if recover_sensors():
+                        last_recovery_monotonic = time.monotonic()
+                        consecutive_zero_light = 0
+                        consecutive_light_read_errors = 0
+                        consecutive_errors = 0
+                        continue
+                    logger.error(
+                        "Repeated light sensor read failures detected and recovery failed"
+                    )
+            else:
+                consecutive_light_read_errors = 0
 
             # Reboot if repeated zero distance readings indicate sensor lockup
             if distance == 0.0:
@@ -538,6 +599,7 @@ async def main():
                     if recover_sensors():
                         last_recovery_monotonic = time.monotonic()
                         consecutive_zero_distance = 0
+                        consecutive_light_read_errors = 0
                         consecutive_errors = 0
                         continue
                     reboot_pi(
@@ -560,6 +622,7 @@ async def main():
                     if recover_sensors():
                         last_recovery_monotonic = time.monotonic()
                         consecutive_zero_light = 0
+                        consecutive_light_read_errors = 0
                         consecutive_errors = 0
                         continue
                     logger.error(

@@ -116,10 +116,13 @@ LIGHT_SAMPLE_COUNT=3
 LIGHT_SAMPLE_DELAY_SECONDS=0.03
 LIGHT_ZERO_RETRY_COUNT=1
 LIGHT_ZERO_RETRY_DELAY_SECONDS=0.05
+LIGHT_I2C_ERROR_RETRY_COUNT=2
+LIGHT_I2C_ERROR_RETRY_DELAY_SECONDS=0.1
 
 # Light warm-up discard
 LIGHT_WARMUP_DISCARD_COUNT=2
 LIGHT_WARMUP_DISCARD_DELAY_SECONDS=0.05
+LIGHT_READ_ERROR_REINIT_THRESHOLD=3
 
 # Optional periodic proactive reinit (0 disables)
 PROACTIVE_REINIT_INTERVAL_SECONDS=0
@@ -130,6 +133,7 @@ Notes:
 - Keep `TOF_TIMING_BUDGET_US <= TOF_INTER_MEASUREMENT_MS * 1000`.
 - If you still see occasional zeros, increase `DISTANCE_SAMPLE_COUNT` to `5` before increasing reboot thresholds.
 - If lights can legitimately be off/dark, keep `LIGHT_ZERO_RETRY_COUNT` low (for example `1`) to avoid masking real zero-lux conditions.
+- For intermittent `[Errno 121] Remote I/O error`, tune `LIGHT_I2C_ERROR_RETRY_COUNT` first, then `LIGHT_READ_ERROR_REINIT_THRESHOLD`.
 - Start with `PROACTIVE_REINIT_INTERVAL_SECONDS=0`; only enable periodic reinit if long-running lockups persist.
 
 ## Usage
