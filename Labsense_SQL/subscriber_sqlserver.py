@@ -27,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
-env_path = Path(__file__).parent / ".env"
+env_path = Path(__file__).parent.parent / ".env"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
     logger.info("Loaded environment variables from .env")
