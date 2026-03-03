@@ -17,6 +17,7 @@ import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 import logging
+from logging.handlers import TimedRotatingFileHandler
 from typing import Any, Optional
 
 try:
@@ -29,14 +30,35 @@ try:
 except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
     LTR559 = None
 
+# Load environment variables from .env file
+env_path = Path(__file__).parent / ".env"
+if not env_path.exists():
+    print(f"Error: .env file not found at {env_path}")
+    sys.exit(1)
+
+load_dotenv(dotenv_path=env_path)
+
 # Configure logging
 log_file = Path(__file__).parent / "fumehood.log"
+log_retention_days = int(os.getenv("FUMEHOOD_LOG_RETENTION_DAYS", "7"))
+log_rotate_when = os.getenv("FUMEHOOD_LOG_ROTATE_WHEN", "midnight")
 handlers: list[logging.Handler] = [logging.StreamHandler()]
 
 try:
-    handlers.append(logging.FileHandler(log_file))
-except PermissionError:
-    print(f"Warning: Cannot write to log file {log_file}. Logging to console only.")
+    handlers.append(
+        TimedRotatingFileHandler(
+            filename=log_file,
+            when=log_rotate_when,
+            interval=1,
+            backupCount=max(log_retention_days, 0),
+            encoding="utf-8",
+        )
+    )
+except (PermissionError, OSError) as error:
+    print(
+        f"Warning: Cannot configure log file rotation at {log_file}: {error}. "
+        "Logging to console only."
+    )
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,14 +66,6 @@ logging.basicConfig(
     handlers=handlers,
 )
 logger = logging.getLogger(__name__)
-
-# Load environment variables from .env file
-env_path = Path(__file__).parent / ".env"
-if not env_path.exists():
-    logger.error(".env file not found at %s", env_path)
-    sys.exit(1)
-
-load_dotenv(dotenv_path=env_path)
 
 # MQTT Configuration
 MQTT_SERVER = os.getenv("MQTT_SERVER", "").strip()

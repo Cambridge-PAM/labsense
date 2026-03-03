@@ -94,6 +94,10 @@ The fumehood script (`Labsense_Sensors/fumehood.py`) uses a local `.env` file in
 Recommended starter values for improved VL53L1X stability:
 
 ```env
+# Logging retention (daily rotation, keep last 7 files)
+FUMEHOOD_LOG_RETENTION_DAYS=7
+FUMEHOOD_LOG_ROTATE_WHEN=midnight
+
 # Optional explicit timing (set both to non-zero to enable set_timing + start_ranging(0))
 TOF_TIMING_BUDGET_US=50000
 TOF_INTER_MEASUREMENT_MS=70
@@ -122,6 +126,7 @@ PROACTIVE_REINIT_INTERVAL_SECONDS=0
 ```
 
 Notes:
+- `FUMEHOOD_LOG_RETENTION_DAYS=7` keeps approximately one week of log history.
 - Keep `TOF_TIMING_BUDGET_US <= TOF_INTER_MEASUREMENT_MS * 1000`.
 - If you still see occasional zeros, increase `DISTANCE_SAMPLE_COUNT` to `5` before increasing reboot thresholds.
 - If lights can legitimately be off/dark, keep `LIGHT_ZERO_RETRY_COUNT` low (for example `1`) to avoid masking real zero-lux conditions.
