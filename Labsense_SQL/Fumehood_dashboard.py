@@ -46,7 +46,7 @@ SASH_OPEN_THRESHOLD_PERCENT = 2.0
 # Fumehood calibration data: {(lab_id, sublab_id): {"fully_closed_mm": mm, "fully_open_mm": mm}}
 # Distance values for sash fully closed (0% open) and fully open (100% open)
 FUMEHOOD_CALIBRATION = {
-    (1, 3): {"fully_closed_mm": 760, "fully_open_mm": 100},
+    (1, 3): {"fully_closed_mm": 680, "fully_open_mm": 100},
 }
 
 # Light threshold configuration: {(lab_id, sublab_id): {"light_on_threshold_lux": lux, "room_light_on_threshold_lux": lux}}
@@ -222,7 +222,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
                 plot_distance_df["Timestamp"],
                 plot_distance_df["SashPercentOpen"],
                 marker="o",
-                linestyle="-",
+                linestyle="none",
                 color="#3498db",
                 linewidth=2,
                 markersize=4,
@@ -237,7 +237,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
                 distance_df["Timestamp"],
                 distance_df["Distance"],
                 marker="o",
-                linestyle="-",
+                linestyle="none",
                 color="#3498db",
                 linewidth=2,
                 markersize=4,
@@ -255,7 +255,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
                 light_df["Timestamp"],
                 light_df["Light"],
                 marker="s",
-                linestyle="-",
+                linestyle="none",
                 color="#e74c3c",
                 linewidth=2,
                 markersize=4,
