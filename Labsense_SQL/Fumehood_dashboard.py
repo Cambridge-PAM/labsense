@@ -142,6 +142,24 @@ def fetch_fumehood_data(connection_string: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def add_night_shading(ax, start_date: datetime, end_date: datetime) -> None:
+    """Add grey shading to indicate night periods (8 pm to 8 am).
+
+    Args:
+        ax: Matplotlib axis to shade
+        start_date: Start date of the data
+        end_date: End date of the data
+    """
+    current_date = start_date.replace(hour=20, minute=0, second=0, microsecond=0)
+
+    while current_date <= end_date:
+        # Each night spans from 8 pm today to 8 am tomorrow
+        night_start = current_date
+        night_end = current_date + timedelta(hours=12)
+        ax.axvspan(night_start, night_end, alpha=0.1, color="grey", zorder=0)
+        current_date += timedelta(days=1)
+
+
 def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]:
     """Create visualization plots for distance and light by lab/sublab."""
     try:
@@ -221,7 +239,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             ax1.plot(
                 plot_distance_df["Timestamp"],
                 plot_distance_df["SashPercentOpen"],
-                marker="o",
+                marker="x",
                 linestyle="none",
                 color="#3498db",
                 linewidth=2,
@@ -236,7 +254,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             ax1.plot(
                 distance_df["Timestamp"],
                 distance_df["Distance"],
-                marker="o",
+                marker="x",
                 linestyle="none",
                 color="#3498db",
                 linewidth=2,
@@ -254,7 +272,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             ax2.plot(
                 light_df["Timestamp"],
                 light_df["Light"],
-                marker="s",
+                marker="x",
                 linestyle="none",
                 color="#e74c3c",
                 linewidth=2,
@@ -267,6 +285,13 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         )
         ax2.grid(True, alpha=0.3)
         ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
+
+        # Add night shading to both axes
+        if not lab_df.empty:
+            date_range_start = lab_df["Timestamp"].min()
+            date_range_end = lab_df["Timestamp"].max()
+            add_night_shading(ax1, date_range_start, date_range_end)
+            add_night_shading(ax2, date_range_start, date_range_end)
 
         fig.autofmt_xdate()
         plt.tight_layout()
