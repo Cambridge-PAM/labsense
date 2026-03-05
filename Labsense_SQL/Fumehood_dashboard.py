@@ -46,7 +46,7 @@ SASH_OPEN_THRESHOLD_PERCENT = 2.0
 # Fumehood calibration data: {(lab_id, sublab_id): {"fully_closed_mm": mm, "fully_open_mm": mm}}
 # Distance values for sash fully closed (0% open) and fully open (100% open)
 FUMEHOOD_CALIBRATION = {
-    (1, 3): {"fully_closed_mm": 680, "fully_open_mm": 100},
+    (1, 3): {"fully_closed_mm": 765, "fully_open_mm": 100},
 }
 
 # Light threshold configuration: {(lab_id, sublab_id): {"light_on_threshold_lux": lux, "room_light_on_threshold_lux": lux}}
