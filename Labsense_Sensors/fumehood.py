@@ -12,13 +12,16 @@ import signal
 import statistics
 from datetime import datetime
 import paho.mqtt.publish as publish
-import os
 import subprocess
 from pathlib import Path
-from dotenv import load_dotenv
 import logging
 from logging.handlers import TimedRotatingFileHandler
 from typing import Any, Optional
+from fumehood_helpers import (
+    close_distance_sensor_instance,
+    close_light_sensor_instance,
+    load_fumehood_settings,
+)
 
 try:
     import VL53L1X  # type: ignore[reportMissingImports]  # distance sensor
@@ -30,18 +33,18 @@ try:
 except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
     LTR559 = None
 
-# Load environment variables from .env file
-env_path = Path(__file__).parent / ".env"
-if not env_path.exists():
-    print(f"Error: .env file not found at {env_path}")
+script_dir = Path(__file__).parent
+
+try:
+    SETTINGS = load_fumehood_settings(script_dir)
+except FileNotFoundError as error:
+    print(f"Error: {error}")
     sys.exit(1)
 
-load_dotenv(dotenv_path=env_path)
-
 # Configure logging
-log_file = Path(__file__).parent / "fumehood.log"
-log_retention_days = int(os.getenv("FUMEHOOD_LOG_RETENTION_DAYS", "7"))
-log_rotate_when = os.getenv("FUMEHOOD_LOG_ROTATE_WHEN", "midnight")
+log_file = script_dir / "fumehood.log"
+log_retention_days = SETTINGS.log_retention_days
+log_rotate_when = SETTINGS.log_rotate_when
 handlers: list[logging.Handler] = [logging.StreamHandler()]
 
 try:
@@ -68,76 +71,62 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # MQTT Configuration
-MQTT_SERVER = os.getenv("MQTT_SERVER", "").strip()
-MQTT_PATH = os.getenv("MQTT_PATH_FUMEHOOD", "fumehood").strip()
-MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
-MQTT_TIMEOUT = int(os.getenv("MQTT_TIMEOUT", "10"))
+MQTT_SERVER = SETTINGS.mqtt_server
+MQTT_PATH = SETTINGS.mqtt_path
+MQTT_PORT = SETTINGS.mqtt_port
+MQTT_TIMEOUT = SETTINGS.mqtt_timeout
 
 # Lab Configuration
-LAB_ID = int(os.getenv("LAB_ID", "1"))
-SUBLAB_ID = int(os.getenv("SUBLAB_ID", "3"))
+LAB_ID = SETTINGS.lab_id
+SUBLAB_ID = SETTINGS.sublab_id
 
 # Sensor Configuration
-TOF_I2C_BUS = int(os.getenv("TOF_I2C_BUS", "1"))
-TOF_I2C_ADDRESS = int(os.getenv("TOF_I2C_ADDRESS", "0x29"), 16)
-TOF_RANGING_MODE = int(os.getenv("TOF_RANGING_MODE", "1"))  # 1=Short, 2=Medium, 3=Long
-TOF_TIMING_BUDGET_US = int(os.getenv("TOF_TIMING_BUDGET_US", "0"))
-TOF_INTER_MEASUREMENT_MS = int(os.getenv("TOF_INTER_MEASUREMENT_MS", "0"))
+TOF_I2C_BUS = SETTINGS.tof_i2c_bus
+TOF_I2C_ADDRESS = SETTINGS.tof_i2c_address
+TOF_RANGING_MODE = SETTINGS.tof_ranging_mode  # 1=Short, 2=Medium, 3=Long
+TOF_TIMING_BUDGET_US = SETTINGS.tof_timing_budget_us
+TOF_INTER_MEASUREMENT_MS = SETTINGS.tof_inter_measurement_ms
 
 # Measurement Configuration
-MEASUREMENT_INTERVAL = int(os.getenv("MEASUREMENT_INTERVAL", "30"))
-SENSOR_STABILIZE_DELAY_SECONDS = float(
-    os.getenv("SENSOR_STABILIZE_DELAY_SECONDS", "1.0")
-)
-DISTANCE_SAMPLE_COUNT = int(os.getenv("DISTANCE_SAMPLE_COUNT", "3"))
-DISTANCE_SAMPLE_DELAY_SECONDS = float(
-    os.getenv("DISTANCE_SAMPLE_DELAY_SECONDS", "0.03")
-)
-DISTANCE_ZERO_RETRY_COUNT = int(os.getenv("DISTANCE_ZERO_RETRY_COUNT", "1"))
-DISTANCE_ZERO_RETRY_DELAY_SECONDS = float(
-    os.getenv("DISTANCE_ZERO_RETRY_DELAY_SECONDS", "0.05")
-)
-DISTANCE_WARMUP_DISCARD_COUNT = int(os.getenv("DISTANCE_WARMUP_DISCARD_COUNT", "2"))
-DISTANCE_WARMUP_DISCARD_DELAY_SECONDS = float(
-    os.getenv("DISTANCE_WARMUP_DISCARD_DELAY_SECONDS", "0.05")
-)
-LIGHT_SAMPLE_COUNT = int(os.getenv("LIGHT_SAMPLE_COUNT", "3"))
-LIGHT_SAMPLE_DELAY_SECONDS = float(os.getenv("LIGHT_SAMPLE_DELAY_SECONDS", "0.03"))
-LIGHT_ZERO_RETRY_COUNT = int(os.getenv("LIGHT_ZERO_RETRY_COUNT", "1"))
-LIGHT_ZERO_RETRY_DELAY_SECONDS = float(
-    os.getenv("LIGHT_ZERO_RETRY_DELAY_SECONDS", "0.05")
-)
-LIGHT_I2C_ERROR_RETRY_COUNT = int(os.getenv("LIGHT_I2C_ERROR_RETRY_COUNT", "2"))
-LIGHT_I2C_ERROR_RETRY_DELAY_SECONDS = float(
-    os.getenv("LIGHT_I2C_ERROR_RETRY_DELAY_SECONDS", "0.1")
-)
-LIGHT_WARMUP_DISCARD_COUNT = int(os.getenv("LIGHT_WARMUP_DISCARD_COUNT", "2"))
-LIGHT_WARMUP_DISCARD_DELAY_SECONDS = float(
-    os.getenv("LIGHT_WARMUP_DISCARD_DELAY_SECONDS", "0.05")
-)
-LIGHT_READ_ERROR_REINIT_THRESHOLD = int(
-    os.getenv("LIGHT_READ_ERROR_REINIT_THRESHOLD", "3")
-)
-PROACTIVE_REINIT_INTERVAL_SECONDS = int(
-    os.getenv("PROACTIVE_REINIT_INTERVAL_SECONDS", "0")
-)
-ZERO_DISTANCE_REBOOT_THRESHOLD = int(os.getenv("ZERO_DISTANCE_REBOOT_THRESHOLD", "10"))
-ZERO_LIGHT_REINIT_THRESHOLD = int(os.getenv("ZERO_LIGHT_REINIT_THRESHOLD", "5"))
-IDENTICAL_LIGHT_REINIT_THRESHOLD = int(
-    os.getenv("IDENTICAL_LIGHT_REINIT_THRESHOLD", "5")
-)
+MEASUREMENT_INTERVAL = SETTINGS.measurement_interval
+SENSOR_STABILIZE_DELAY_SECONDS = SETTINGS.sensor_stabilize_delay_seconds
+
+DISTANCE_RETRY = SETTINGS.distance_retry
+LIGHT_RETRY = SETTINGS.light_retry
+RECOVERY = SETTINGS.recovery
+
+# Backward-compatible aliases used throughout runtime logic.
+DISTANCE_SAMPLE_COUNT = DISTANCE_RETRY.sample_count
+DISTANCE_SAMPLE_DELAY_SECONDS = DISTANCE_RETRY.sample_delay_seconds
+DISTANCE_ZERO_RETRY_COUNT = DISTANCE_RETRY.zero_retry_count
+DISTANCE_ZERO_RETRY_DELAY_SECONDS = DISTANCE_RETRY.zero_retry_delay_seconds
+DISTANCE_WARMUP_DISCARD_COUNT = DISTANCE_RETRY.warmup_discard_count
+DISTANCE_WARMUP_DISCARD_DELAY_SECONDS = DISTANCE_RETRY.warmup_discard_delay_seconds
+
+LIGHT_SAMPLE_COUNT = LIGHT_RETRY.sample_count
+LIGHT_SAMPLE_DELAY_SECONDS = LIGHT_RETRY.sample_delay_seconds
+LIGHT_ZERO_RETRY_COUNT = LIGHT_RETRY.zero_retry_count
+LIGHT_ZERO_RETRY_DELAY_SECONDS = LIGHT_RETRY.zero_retry_delay_seconds
+LIGHT_I2C_ERROR_RETRY_COUNT = LIGHT_RETRY.i2c_error_retry_count
+LIGHT_I2C_ERROR_RETRY_DELAY_SECONDS = LIGHT_RETRY.i2c_error_retry_delay_seconds
+LIGHT_WARMUP_DISCARD_COUNT = LIGHT_RETRY.warmup_discard_count
+LIGHT_WARMUP_DISCARD_DELAY_SECONDS = LIGHT_RETRY.warmup_discard_delay_seconds
+
+LIGHT_READ_ERROR_REINIT_THRESHOLD = RECOVERY.light_read_error_reinit_threshold
+PROACTIVE_REINIT_INTERVAL_SECONDS = RECOVERY.proactive_reinit_interval_seconds
+ZERO_DISTANCE_REBOOT_THRESHOLD = RECOVERY.zero_distance_reboot_threshold
+ZERO_LIGHT_REINIT_THRESHOLD = RECOVERY.zero_light_reinit_threshold
+IDENTICAL_LIGHT_REINIT_THRESHOLD = RECOVERY.identical_light_reinit_threshold
+RECOVERY_FAILURE_BACKOFF_SECONDS = RECOVERY.failure_backoff_seconds
+RECOVERY_CIRCUIT_BREAKER_THRESHOLD = RECOVERY.circuit_breaker_threshold
+RECOVERY_CIRCUIT_BREAKER_WINDOW_SECONDS = RECOVERY.circuit_breaker_window_seconds
+RECOVERY_EXIT_ON_CIRCUIT_BREAKER = RECOVERY.exit_on_circuit_breaker
 
 # Sensor Validation Configuration
-DISTANCE_MIN_MM = int(os.getenv("DISTANCE_MIN_MM", "0"))  # Minimum valid distance in mm
-DISTANCE_MAX_MM = int(
-    os.getenv("DISTANCE_MAX_MM", "4000")
-)  # Maximum valid distance in mm
-LIGHT_MIN_LUX = float(
-    os.getenv("LIGHT_MIN_LUX", "0")
-)  # Minimum valid light level in lux
-LIGHT_MAX_LUX = float(
-    os.getenv("LIGHT_MAX_LUX", "200000")
-)  # Maximum valid light level in lux
+DISTANCE_MIN_MM = SETTINGS.distance_min_mm  # Minimum valid distance in mm
+DISTANCE_MAX_MM = SETTINGS.distance_max_mm  # Maximum valid distance in mm
+LIGHT_MIN_LUX = SETTINGS.light_min_lux  # Minimum valid light level in lux
+LIGHT_MAX_LUX = SETTINGS.light_max_lux  # Maximum valid light level in lux
 
 # Validate required configuration
 if not MQTT_SERVER:
@@ -153,6 +142,7 @@ state: dict[str, Any] = {
     "tof": None,
     "ltr559": None,
     "shutdown_flag": False,
+    "exit_code": 0,
 }
 
 
@@ -195,6 +185,8 @@ def initialize_sensors() -> bool:
                 "Distance sensor initialized (ranging mode: %s)", TOF_RANGING_MODE
             )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
+            if state["tof"] is not None:
+                close_distance_sensor_instance(state["tof"])
             logger.error("Failed to initialize distance sensor: %s", e)
             state["tof"] = None
             success = False
@@ -206,6 +198,8 @@ def initialize_sensors() -> bool:
             state["ltr559"] = LTR559()
             logger.info("Light sensor initialized")
         except (OSError, RuntimeError, ValueError, TypeError) as e:
+            if state["ltr559"] is not None:
+                close_light_sensor_instance(state["ltr559"])
             logger.error("Failed to initialize light sensor: %s", e)
             state["ltr559"] = None
             success = False
@@ -216,16 +210,23 @@ def initialize_sensors() -> bool:
 def cleanup_sensors():
     """Clean up sensor resources"""
     if state["tof"] is not None:
+        tof = state["tof"]
         try:
-            state["tof"].stop_ranging()
-            state["tof"].close()
+            tof.stop_ranging()
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.warning("Error stopping distance sensor ranging: %s", e)
+
+        try:
+            tof.close()
             logger.info("Distance sensor cleaned up")
         except (OSError, RuntimeError, ValueError, TypeError) as e:
-            logger.warning("Error cleaning up distance sensor: %s", e)
+            logger.warning("Error closing distance sensor: %s", e)
         finally:
             state["tof"] = None
 
-    # LTR559 doesn't require explicit cleanup
+    if state["ltr559"] is not None:
+        close_light_sensor_instance(state["ltr559"])
+
     state["ltr559"] = None
     logger.info("Sensors cleaned up")
 
@@ -526,6 +527,68 @@ def recover_sensors() -> bool:
     return False
 
 
+def attempt_sensor_recovery(
+    reason: str,
+    recovery_failure_timestamps: list[float],
+    recovery_backoff_until: float,
+) -> tuple[bool, float]:
+    """Attempt sensor recovery with backoff and circuit-breaker protection."""
+    now = time.monotonic()
+    if recovery_backoff_until > now:
+        remaining_seconds = recovery_backoff_until - now
+        logger.warning(
+            "Skipping sensor recovery (%s) due to active backoff: %.1fs remaining",
+            reason,
+            remaining_seconds,
+        )
+        return False, recovery_backoff_until
+
+    logger.warning("Sensor recovery trigger: %s", reason)
+    if recover_sensors():
+        recovery_failure_timestamps.clear()
+        return True, 0.0
+
+    failed_at = time.monotonic()
+    window_seconds = max(RECOVERY_CIRCUIT_BREAKER_WINDOW_SECONDS, 0)
+    if window_seconds > 0:
+        recovery_failure_timestamps[:] = [
+            timestamp
+            for timestamp in recovery_failure_timestamps
+            if failed_at - timestamp <= window_seconds
+        ]
+    else:
+        recovery_failure_timestamps.clear()
+
+    recovery_failure_timestamps.append(failed_at)
+
+    next_backoff_until = 0.0
+    if RECOVERY_FAILURE_BACKOFF_SECONDS > 0:
+        next_backoff_until = failed_at + RECOVERY_FAILURE_BACKOFF_SECONDS
+        logger.warning(
+            "Recovery failed for '%s'. Applying backoff for %ss",
+            reason,
+            RECOVERY_FAILURE_BACKOFF_SECONDS,
+        )
+
+    if (
+        RECOVERY_CIRCUIT_BREAKER_THRESHOLD > 0
+        and len(recovery_failure_timestamps) >= RECOVERY_CIRCUIT_BREAKER_THRESHOLD
+    ):
+        logger.critical(
+            "Recovery circuit breaker opened after %s failed recoveries in %ss",
+            len(recovery_failure_timestamps),
+            window_seconds,
+        )
+        if RECOVERY_EXIT_ON_CIRCUIT_BREAKER:
+            logger.critical(
+                "Configured to exit on circuit breaker. Stopping process for service restart"
+            )
+            state["exit_code"] = 1
+            state["shutdown_flag"] = True
+
+    return False, next_backoff_until
+
+
 async def main():
     """Main monitoring loop with error handling"""
     logger.info("Starting fumehood monitoring main loop")
@@ -539,6 +602,54 @@ async def main():
     consecutive_identical_light = 0
     last_light_value: Optional[float] = None
     last_recovery_monotonic = time.monotonic()
+    recovery_backoff_until = 0.0
+    recovery_failure_timestamps: list[float] = []
+
+    def apply_recovery_success(
+        *,
+        reset_zero_distance: bool = False,
+        reset_zero_light: bool = False,
+    ) -> None:
+        nonlocal last_recovery_monotonic
+        nonlocal consecutive_zero_distance
+        nonlocal consecutive_zero_light
+        nonlocal consecutive_light_read_errors
+        nonlocal consecutive_identical_light
+        nonlocal last_light_value
+        nonlocal consecutive_errors
+
+        last_recovery_monotonic = time.monotonic()
+        if reset_zero_distance:
+            consecutive_zero_distance = 0
+        if reset_zero_light:
+            consecutive_zero_light = 0
+        consecutive_light_read_errors = 0
+        consecutive_identical_light = 0
+        last_light_value = None
+        consecutive_errors = 0
+
+    def trigger_recovery(
+        reason: str,
+        *,
+        reset_zero_distance: bool = False,
+        reset_zero_light: bool = False,
+    ) -> tuple[bool, bool]:
+        nonlocal recovery_backoff_until
+
+        recovered, recovery_backoff_until = attempt_sensor_recovery(
+            reason,
+            recovery_failure_timestamps,
+            recovery_backoff_until,
+        )
+
+        if recovered:
+            apply_recovery_success(
+                reset_zero_distance=reset_zero_distance,
+                reset_zero_light=reset_zero_light,
+            )
+            return True, False
+
+        return False, bool(state["shutdown_flag"])
 
     while not state["shutdown_flag"]:
         try:
@@ -552,15 +663,15 @@ async def main():
                         "Proactive sensor re-initialization triggered after %s seconds",
                         PROACTIVE_REINIT_INTERVAL_SECONDS,
                     )
-                    if recover_sensors():
-                        last_recovery_monotonic = time.monotonic()
-                        consecutive_zero_distance = 0
-                        consecutive_zero_light = 0
-                        consecutive_light_read_errors = 0
-                        consecutive_identical_light = 0
-                        last_light_value = None
-                        consecutive_errors = 0
+                    recovered, should_break = trigger_recovery(
+                        "proactive re-initialization interval reached",
+                        reset_zero_distance=True,
+                        reset_zero_light=True,
+                    )
+                    if recovered:
                         continue
+                    if should_break:
+                        break
                     logger.warning("Proactive sensor re-initialization failed")
 
             time_send = datetime.now()
@@ -582,14 +693,14 @@ async def main():
                     and consecutive_light_read_errors
                     >= LIGHT_READ_ERROR_REINIT_THRESHOLD
                 ):
-                    if recover_sensors():
-                        last_recovery_monotonic = time.monotonic()
-                        consecutive_zero_light = 0
-                        consecutive_light_read_errors = 0
-                        consecutive_identical_light = 0
-                        last_light_value = None
-                        consecutive_errors = 0
+                    recovered, should_break = trigger_recovery(
+                        "repeated light sensor read failures",
+                        reset_zero_light=True,
+                    )
+                    if recovered:
                         continue
+                    if should_break:
+                        break
                     logger.error(
                         "Repeated light sensor read failures detected and recovery failed"
                     )
@@ -605,14 +716,14 @@ async def main():
                     ZERO_DISTANCE_REBOOT_THRESHOLD,
                 )
                 if consecutive_zero_distance >= ZERO_DISTANCE_REBOOT_THRESHOLD:
-                    if recover_sensors():
-                        last_recovery_monotonic = time.monotonic()
-                        consecutive_zero_distance = 0
-                        consecutive_light_read_errors = 0
-                        consecutive_identical_light = 0
-                        last_light_value = None
-                        consecutive_errors = 0
+                    recovered, should_break = trigger_recovery(
+                        "repeated zero distance readings",
+                        reset_zero_distance=True,
+                    )
+                    if recovered:
                         continue
+                    if should_break:
+                        break
                     reboot_pi(
                         "Repeated 0.0 mm distance readings detected and recovery "
                         "failed; rebooting Pi"
@@ -630,14 +741,14 @@ async def main():
                     ZERO_LIGHT_REINIT_THRESHOLD,
                 )
                 if consecutive_zero_light >= ZERO_LIGHT_REINIT_THRESHOLD:
-                    if recover_sensors():
-                        last_recovery_monotonic = time.monotonic()
-                        consecutive_zero_light = 0
-                        consecutive_light_read_errors = 0
-                        consecutive_identical_light = 0
-                        last_light_value = None
-                        consecutive_errors = 0
+                    recovered, should_break = trigger_recovery(
+                        "repeated zero light readings",
+                        reset_zero_light=True,
+                    )
+                    if recovered:
                         continue
+                    if should_break:
+                        break
                     logger.error(
                         "Repeated 0.0 lux readings detected and recovery failed"
                     )
@@ -662,14 +773,14 @@ async def main():
                         consecutive_identical_light,
                         lux,
                     )
-                    if recover_sensors():
-                        last_recovery_monotonic = time.monotonic()
-                        consecutive_zero_light = 0
-                        consecutive_light_read_errors = 0
-                        consecutive_identical_light = 0
-                        last_light_value = None
-                        consecutive_errors = 0
+                    recovered, should_break = trigger_recovery(
+                        "repeated identical light readings",
+                        reset_zero_light=True,
+                    )
+                    if recovered:
                         continue
+                    if should_break:
+                        break
                     logger.error(
                         "Repeated identical light readings detected and recovery failed"
                     )
@@ -781,6 +892,13 @@ def run():
         # Run main async loop
         logger.info("Starting main monitoring loop")
         asyncio.run(main())
+
+        if state["exit_code"] != 0:
+            logger.error(
+                "Exiting with status %s after recovery circuit breaker",
+                state["exit_code"],
+            )
+            sys.exit(int(state["exit_code"]))
 
     except KeyboardInterrupt:
         logger.info("Script interrupted by user")
