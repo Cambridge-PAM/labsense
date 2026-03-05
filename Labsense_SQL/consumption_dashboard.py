@@ -179,15 +179,15 @@ def create_plots(
 
     plot_files = {}
 
-    # Filter to last year window, anchored to the 1st of the start month
-    one_year_ago = datetime.now() - timedelta(days=365)
-    last_year_start = one_year_ago.replace(
+    # Filter to last two years window, anchored to the 1st of the start month
+    two_years_ago = datetime.now() - timedelta(days=730)
+    last_two_years_start = two_years_ago.replace(
         day=1, hour=0, minute=0, second=0, microsecond=0
     )
-    df_last_year = df[df["Datestamp"] >= last_year_start].copy()
+    df_last_year = df[df["Datestamp"] >= last_two_years_start].copy()
 
     if df_last_year.empty:
-        print("No data in the last year")
+        print("No data in the last two years")
         return {}
 
     # Sort by date for plotting
@@ -217,7 +217,7 @@ def create_plots(
     ax.set_xlabel("Date", fontsize=12)
     ax.set_ylabel("Daily Consumption (kWh)", fontsize=12)
     ax.set_title(
-        "Daily Electricity Consumption Trends (Last Year)",
+        "Daily Electricity Consumption Trends (Last Two Years)",
         fontsize=14,
         fontweight="bold",
     )
@@ -253,7 +253,9 @@ def create_plots(
     ax.set_xlabel("Month", fontsize=12)
     ax.set_ylabel("Monthly Consumption (kWh)", fontsize=12)
     ax.set_title(
-        "Monthly Electricity Consumption (Last Year)", fontsize=14, fontweight="bold"
+        "Monthly Electricity Consumption (Last Two Years)",
+        fontsize=14,
+        fontweight="bold",
     )
     ax.set_xticks(range(len(monthly_data)))
     ax.set_xticklabels(monthly_data["YearMonth"], rotation=45, ha="right")
