@@ -53,7 +53,7 @@ FUMEHOOD_CALIBRATION = {
 # Light level above light_on_threshold indicates the fumehood light is on
 # Light level above room_light_on_threshold indicates the room lights are on
 LIGHT_THRESHOLDS = {
-    (1, 3): {"light_on_threshold_lux": 80, "room_light_on_threshold_lux": 1},
+    (1, 3): {"light_on_threshold_lux": 80, "room_light_on_threshold_lux": 15},
 }
 
 
@@ -121,6 +121,50 @@ def is_light_on(light_level: float, lab_id: int, sublab_id: int) -> Optional[boo
     return light_level > threshold
 
 
+def identify_light_errors(df: pd.DataFrame) -> pd.Series:
+    """Identify light reading errors based on consecutive zeros.
+
+    A light reading of 0 is an error if it occurs for less than 10 consecutive data points.
+    If 0 occurs for 10 or more consecutive points, those are valid (actual darkness).
+
+    Args:
+        df: DataFrame with Light column, sorted by Timestamp
+
+    Returns:
+        Boolean Series indicating which rows are errors (True = error)
+    """
+    if df.empty or "Light" not in df.columns:
+        return pd.Series([False] * len(df), index=df.index)
+
+    is_error = pd.Series([False] * len(df), index=df.index)
+
+    # Find consecutive runs of zeros
+    is_zero = (df["Light"] == 0).values
+
+    i = 0
+    while i < len(is_zero):
+        if is_zero[i]:
+            # Start of a zero run
+            run_start = i
+            run_end = i
+
+            # Find the end of this run
+            while run_end < len(is_zero) and is_zero[run_end]:
+                run_end += 1
+
+            run_length = run_end - run_start
+
+            # If run is less than 10, mark as errors
+            if run_length < 10:
+                is_error.iloc[run_start:run_end] = True
+
+            i = run_end
+        else:
+            i += 1
+
+    return is_error
+
+
 def fetch_fumehood_data(connection_string: str) -> pd.DataFrame:
     """Fetch all fumehood data from SQL Server."""
     try:
@@ -142,22 +186,106 @@ def fetch_fumehood_data(connection_string: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def add_night_shading(ax, start_date: datetime, end_date: datetime) -> None:
-    """Add grey shading to indicate night periods (8 pm to 8 am).
+def add_night_shading(ax, light_df: pd.DataFrame, lab_id: int, sublab_id: int) -> None:
+    """Add grey shading to indicate periods when room lights are off (below threshold).
 
     Args:
         ax: Matplotlib axis to shade
-        start_date: Start date of the data
-        end_date: End date of the data
+        light_df: DataFrame with Timestamp and Light columns
+        lab_id: Laboratory ID
+        sublab_id: Sublaboratory ID
     """
-    current_date = start_date.replace(hour=20, minute=0, second=0, microsecond=0)
+    # Check if threshold is available
+    if (lab_id, sublab_id) not in LIGHT_THRESHOLDS:
+        return
 
-    while current_date <= end_date:
-        # Each night spans from 8 pm today to 8 am tomorrow
-        night_start = current_date
-        night_end = current_date + timedelta(hours=12)
-        ax.axvspan(night_start, night_end, alpha=0.1, color="grey", zorder=0)
-        current_date += timedelta(days=1)
+    if "room_light_on_threshold_lux" not in LIGHT_THRESHOLDS[(lab_id, sublab_id)]:
+        return
+
+    if light_df.empty:
+        return
+
+    threshold = LIGHT_THRESHOLDS[(lab_id, sublab_id)]["room_light_on_threshold_lux"]
+
+    # Sort by timestamp
+    light_sorted = light_df.sort_values("Timestamp").reset_index(drop=True)
+
+    # Find periods where light is below threshold
+    light_sorted["below_threshold"] = light_sorted["Light"] <= threshold
+
+    # Find the start and end of each period below threshold
+    i = 0
+    while i < len(light_sorted):
+        if light_sorted.loc[i, "below_threshold"]:
+            # Start of a dark period
+            period_start = light_sorted.loc[i, "Timestamp"]
+
+            # Find the end of this dark period
+            j = i
+            while j < len(light_sorted) and light_sorted.loc[j, "below_threshold"]:
+                j += 1
+
+            # Shade from period_start to the last timestamp in this period
+            if j > i:
+                period_end = light_sorted.loc[j - 1, "Timestamp"]
+                ax.axvspan(period_start, period_end, alpha=0.1, color="grey", zorder=0)
+
+            i = j
+        else:
+            i += 1
+
+
+def add_fumehood_light_shading(
+    ax, light_df: pd.DataFrame, lab_id: int, sublab_id: int
+) -> None:
+    """Add orange shading to indicate periods when fumehood light is on (above threshold).
+
+    Args:
+        ax: Matplotlib axis to shade
+        light_df: DataFrame with Timestamp and Light columns
+        lab_id: Laboratory ID
+        sublab_id: Sublaboratory ID
+    """
+    # Check if threshold is available
+    if (lab_id, sublab_id) not in LIGHT_THRESHOLDS:
+        return
+
+    if "light_on_threshold_lux" not in LIGHT_THRESHOLDS[(lab_id, sublab_id)]:
+        return
+
+    if light_df.empty:
+        return
+
+    threshold = LIGHT_THRESHOLDS[(lab_id, sublab_id)]["light_on_threshold_lux"]
+
+    # Sort by timestamp
+    light_sorted = light_df.sort_values("Timestamp").reset_index(drop=True)
+
+    # Find periods where light is above threshold
+    light_sorted["above_threshold"] = light_sorted["Light"] > threshold
+
+    # Find the start and end of each period above threshold
+    i = 0
+    while i < len(light_sorted):
+        if light_sorted.loc[i, "above_threshold"]:
+            # Start of a light-on period
+            period_start = light_sorted.loc[i, "Timestamp"]
+
+            # Find the end of this light-on period
+            j = i
+            while j < len(light_sorted) and light_sorted.loc[j, "above_threshold"]:
+                j += 1
+
+            # Shade from period_start to the last timestamp in this period
+            if j > i:
+                period_end = light_sorted.loc[j - 1, "Timestamp"]
+                ax.axvspan(
+                    period_start, period_end, alpha=0.15, color="orange", zorder=0
+                )
+
+            i = j
+        else:
+            i += 1
 
 
 def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]:
@@ -202,13 +330,16 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if lab_df.empty:
             continue
 
-        # Count errors separately (negative distance values and light values below 1 lux)
+        # Count errors separately
         distance_errors = (lab_df["Distance"] < 0).sum()
-        light_errors = (lab_df["Light"] < 1).sum()
+
+        # Identify light errors using consecutive zeros logic
+        light_error_mask = identify_light_errors(lab_df)
+        light_errors = light_error_mask.sum()
 
         # Filter data separately by sensor type
         distance_df = lab_df[lab_df["Distance"] >= 0]
-        light_df = lab_df[lab_df["Light"] >= 1]
+        light_df = lab_df[~light_error_mask]
 
         # Check if we have any valid data for either sensor
         if distance_df.empty and light_df.empty:
@@ -286,12 +417,12 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         ax2.grid(True, alpha=0.3)
         ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
 
-        # Add night shading to both axes
-        if not lab_df.empty:
-            date_range_start = lab_df["Timestamp"].min()
-            date_range_end = lab_df["Timestamp"].max()
-            add_night_shading(ax1, date_range_start, date_range_end)
-            add_night_shading(ax2, date_range_start, date_range_end)
+        # Add shading for periods when room lights are off (based on light sensor)
+        if not light_df.empty:
+            add_night_shading(ax1, light_df, lab_id, sublab_id)
+            add_night_shading(ax2, light_df, lab_id, sublab_id)
+            add_fumehood_light_shading(ax1, light_df, lab_id, sublab_id)
+            add_fumehood_light_shading(ax2, light_df, lab_id, sublab_id)
 
         fig.autofmt_xdate()
         plt.tight_layout()
@@ -398,13 +529,16 @@ def create_html_dashboard(
             if lab_df.empty:
                 continue
 
-            # Count errors separately (negative distance values and light values below 1 lux)
+            # Count errors separately
             distance_errors = (lab_df["Distance"] < 0).sum()
-            light_errors = (lab_df["Light"] < 1).sum()
+
+            # Identify light errors using consecutive zeros logic
+            light_error_mask = identify_light_errors(lab_df)
+            light_errors = light_error_mask.sum()
 
             # Filter to valid data separately for each sensor
             valid_distance_df = lab_df[lab_df["Distance"] >= 0]
-            valid_light_df = lab_df[lab_df["Light"] >= 1]
+            valid_light_df = lab_df[~light_error_mask]
 
             # Get latest valid readings
             latest_distance = None
