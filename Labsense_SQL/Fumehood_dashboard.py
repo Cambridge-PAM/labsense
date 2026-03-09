@@ -122,10 +122,11 @@ def is_light_on(light_level: float, lab_id: int, sublab_id: int) -> Optional[boo
 
 
 def identify_light_errors(df: pd.DataFrame) -> pd.Series:
-    """Identify light reading errors based on consecutive zeros.
+    """Identify light reading errors based on consecutive zeros and values above 500 lux.
 
     A light reading of 0 is an error if it occurs for less than 10 consecutive data points.
     If 0 occurs for 10 or more consecutive points, those are valid (actual darkness).
+    Light readings above 500 lux are always considered errors.
 
     Args:
         df: DataFrame with Light column, sorted by Timestamp
@@ -137,6 +138,9 @@ def identify_light_errors(df: pd.DataFrame) -> pd.Series:
         return pd.Series([False] * len(df), index=df.index)
 
     is_error = pd.Series([False] * len(df), index=df.index)
+
+    # Mark values above 500 lux as errors
+    is_error = is_error | (df["Light"] > 500)
 
     # Find consecutive runs of zeros
     is_zero = (df["Light"] == 0).values
@@ -161,6 +165,38 @@ def identify_light_errors(df: pd.DataFrame) -> pd.Series:
             i = run_end
         else:
             i += 1
+
+    return is_error
+
+
+def identify_distance_errors(df: pd.DataFrame) -> pd.Series:
+    """Identify distance reading errors based on negative readings and subsequent values.
+
+    Distance readings are errors if:
+    - The value is negative, OR
+    - The value is within the next 4 readings after a negative value
+
+    Args:
+        df: DataFrame with Distance column, sorted by Timestamp
+
+    Returns:
+        Boolean Series indicating which rows are errors (True = error)
+    """
+    if df.empty or "Distance" not in df.columns:
+        return pd.Series([False] * len(df), index=df.index)
+
+    is_error = pd.Series([False] * len(df), index=df.index)
+    distances = df["Distance"].values
+
+    # Iterate through all readings
+    for i in range(len(distances)):
+        # If we find a negative value
+        if distances[i] < 0:
+            # Mark the negative value as error
+            is_error.iloc[i] = True
+            # Mark the next 4 consecutive values as errors
+            for j in range(i + 1, min(i + 5, len(distances))):
+                is_error.iloc[j] = True
 
     return is_error
 
@@ -331,14 +367,15 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             continue
 
         # Count errors separately
-        distance_errors = (lab_df["Distance"] < 0).sum()
+        distance_error_mask = identify_distance_errors(lab_df)
+        distance_errors = distance_error_mask.sum()
 
         # Identify light errors using consecutive zeros logic
         light_error_mask = identify_light_errors(lab_df)
         light_errors = light_error_mask.sum()
 
         # Filter data separately by sensor type
-        distance_df = lab_df[lab_df["Distance"] >= 0]
+        distance_df = lab_df[~distance_error_mask]
         light_df = lab_df[~light_error_mask]
 
         # Check if we have any valid data for either sensor
@@ -530,14 +567,15 @@ def create_html_dashboard(
                 continue
 
             # Count errors separately
-            distance_errors = (lab_df["Distance"] < 0).sum()
+            distance_error_mask = identify_distance_errors(lab_df)
+            distance_errors = distance_error_mask.sum()
 
             # Identify light errors using consecutive zeros logic
             light_error_mask = identify_light_errors(lab_df)
             light_errors = light_error_mask.sum()
 
             # Filter to valid data separately for each sensor
-            valid_distance_df = lab_df[lab_df["Distance"] >= 0]
+            valid_distance_df = lab_df[~distance_error_mask]
             valid_light_df = lab_df[~light_error_mask]
 
             # Get latest valid readings
