@@ -23,6 +23,20 @@ import argparse
 from datetime import datetime
 from typing import Optional, Dict
 import re
+from Labsense_SQL.gsk_enviro_dict_temp import (
+    gsk_composite_red,
+    gsk_inc_red,
+    gsk_voc_red,
+    gsk_aqua_red,
+    gsk_air_red,
+    gsk_health_red,
+    gsk_composite_green,
+    gsk_inc_green,
+    gsk_voc_green,
+    gsk_aqua_green,
+    gsk_air_green,
+    gsk_health_green,
+)
 
 # SQL Server connection details
 SQL_SERVER_NAME = "MSM-FPM-70203\\LABSENSE"
@@ -55,6 +69,24 @@ CATEGORY_DISPLAY_NAMES = {
     "chemAquatic": "Environmental Impact - Aquatic",
     "chemAir": "Environmental Impact - Air",
     "chemHealth": "Health Hazards",
+}
+
+CATEGORY_RED_SOLVENTS = {
+    "chemComposite": gsk_composite_red,
+    "chemIncineration": gsk_inc_red,
+    "chemVOC": gsk_voc_red,
+    "chemAquatic": gsk_aqua_red,
+    "chemAir": gsk_air_red,
+    "chemHealth": gsk_health_red,
+}
+
+CATEGORY_GREEN_SOLVENTS = {
+    "chemComposite": gsk_composite_green,
+    "chemIncineration": gsk_inc_green,
+    "chemVOC": gsk_voc_green,
+    "chemAquatic": gsk_aqua_green,
+    "chemAir": gsk_air_green,
+    "chemHealth": gsk_health_green,
 }
 
 CATEGORY_BRIEF_DESCRIPTIONS = {
@@ -263,6 +295,36 @@ def create_html_dashboard(
             "        </div>",
             "      </div>",
         ]
+
+        # Add red chemical substitution list with green alternatives
+        red_solvents = CATEGORY_RED_SOLVENTS.get(category, {})
+        green_solvents = CATEGORY_GREEN_SOLVENTS.get(category, {})
+        if red_solvents:
+            red_items = "".join(
+                f"<li>{name} <span style='color:#888;font-size:0.85em;'>({cas})</span></li>"
+                for name, cas in sorted(red_solvents.items())
+            )
+            html_lines += [
+                '      <div style="background:#fdf3f3;border-left:4px solid #e74c3c;border-radius:6px;padding:15px 20px;margin:18px 0;">',
+                '        <h4 style="margin:0 0 8px 0;color:#c0392b;">&#9888; Red-classified chemicals in this category</h4>',
+                '        <p style="margin:0 0 10px 0;color:#555;">The following chemicals are classified <strong>red</strong> under this impact category. '
+                "Consider substituting these chemicals for greener alternatives where possible to reduce environmental and health risk.</p>",
+                f'        <ul style="margin:0;padding-left:20px;columns:2;-webkit-columns:2;column-gap:30px;">{red_items}</ul>',
+                "      </div>",
+            ]
+        if green_solvents:
+            green_items = "".join(
+                f"<li>{name} <span style='color:#888;font-size:0.85em;'>({cas})</span></li>"
+                for name, cas in sorted(green_solvents.items())
+            )
+            html_lines += [
+                '      <div style="background:#f2fbf5;border-left:4px solid #27ae60;border-radius:6px;padding:15px 20px;margin:18px 0;">',
+                '        <h4 style="margin:0 0 8px 0;color:#1e8449;">&#9989; Green-classified chemicals — consider these as substitutes</h4>',
+                '        <p style="margin:0 0 10px 0;color:#555;">The following chemicals are classified <strong>green</strong> under this impact category '
+                "and represent lower-risk alternatives worth considering as replacements for red-classified chemicals.</p>",
+                f'        <ul style="margin:0;padding-left:20px;columns:2;-webkit-columns:2;column-gap:30px;">{green_items}</ul>',
+                "      </div>",
+            ]
 
         # Add plot if available
         if category in plot_files:
