@@ -47,6 +47,12 @@ SINK_NAMES = {
     (2, 2): "Sink 2",
 }
 
+# Analysis window and validation constants
+ANALYSIS_WINDOW_DAYS = 30
+INVALID_WATER_READING_L = 0.003
+WATER_VALIDATION_TOLERANCE = 5e-4
+OLYMPIC_POOL_VOLUME_L = 2_500_000
+
 
 def get_lab_display_name(lab_id: int) -> str:
     """Get display name for a lab ID."""
@@ -86,6 +92,23 @@ def fetch_water_data(connection_string: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def identify_water_errors(df: pd.DataFrame) -> pd.Series:
+    """Identify invalid water readings.
+
+    Invalid readings are:
+    - Negative values
+    - Values equal to 0.003 L (within tolerance)
+    """
+    if df.empty or "Water" not in df.columns:
+        return pd.Series([False] * len(df), index=df.index)
+
+    is_negative = df["Water"] < 0
+    is_invalid_point = (
+        df["Water"] - INVALID_WATER_READING_L
+    ).abs() <= WATER_VALIDATION_TOLERANCE
+    return is_negative | is_invalid_point
+
+
 def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]:
     """Create visualization plots for water consumption by lab/sublab."""
     try:
@@ -102,12 +125,12 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
     if df.empty:
         return plot_files
 
-    # Filter to last 7 days
-    last_week = datetime.now() - timedelta(days=7)
-    df = df[df["Timestamp"] >= last_week]  # type: ignore[assignment]
+    # Filter to last month (30 days)
+    analysis_start = datetime.now() - timedelta(days=ANALYSIS_WINDOW_DAYS)
+    df = df[df["Timestamp"] >= analysis_start]  # type: ignore[assignment]
 
     if df.empty:
-        print("No data found in the last 7 days")
+        print(f"No data found in the last {ANALYSIS_WINDOW_DAYS} days")
         return plot_files
 
     # Get unique lab/sublab combinations
@@ -128,11 +151,10 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if lab_df.empty:
             continue
 
-        # Count errors (negative values)
-        water_errors = (lab_df["Water"] < 0).sum()
-
-        # Filter to valid data only (non-negative values)
-        plot_df = lab_df[lab_df["Water"] >= 0]
+        # Count and filter errors
+        water_error_mask = identify_water_errors(lab_df)
+        water_errors = water_error_mask.sum()
+        plot_df = lab_df[~water_error_mask]
 
         if plot_df.empty:
             continue
@@ -160,7 +182,9 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             f"{get_display_label(lab_id, sublab_id)}: Daily Water Consumption ({water_errors} errors excluded)"
         )
         ax.grid(True, alpha=0.3, axis="y")
+        ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+        ax.tick_params(axis="x", labelsize=8)
 
         fig.autofmt_xdate()
         plt.tight_layout()
@@ -234,13 +258,16 @@ def create_html_dashboard(
             "</html>",
         ]
     else:
-        # Filter to last 7 days
-        last_week = datetime.now() - timedelta(days=7)
-        df = df[df["Timestamp"] >= last_week]  # type: ignore[assignment]
+        all_df = df.copy()
+        year_start = datetime(datetime.now().year, 1, 1)
+
+        # Filter to last month (30 days)
+        analysis_start = datetime.now() - timedelta(days=ANALYSIS_WINDOW_DAYS)
+        df = df[df["Timestamp"] >= analysis_start]  # type: ignore[assignment]
 
         if df.empty:
             html_lines += [
-                "    <p>No data found in the last 7 days.</p>",
+                f"    <p>No data found in the last {ANALYSIS_WINDOW_DAYS} days.</p>",
                 "  </div>",
                 "</body>",
                 "</html>",
@@ -267,11 +294,22 @@ def create_html_dashboard(
                 if lab_df.empty:
                     continue
 
-                # Count errors (negative values)
-                water_errors = (lab_df["Water"] < 0).sum()
+                # Count and filter invalid points for statistics
+                water_error_mask = identify_water_errors(lab_df)
+                water_errors = water_error_mask.sum()
+                valid_df = lab_df[~water_error_mask]
 
-                # Filter to valid data only (non-negative values) for statistics
-                valid_df = lab_df[lab_df["Water"] >= 0]
+                # This-year data for this lab/sublab
+                year_lab_df = all_df[
+                    (all_df["LabId"] == lab_id)
+                    & (all_df["SublabId"] == sublab_id)
+                    & (all_df["Timestamp"] >= year_start)
+                ].sort_values(
+                    by=["Timestamp"], ascending=False
+                )  # type: ignore[call-overload]
+
+                year_water_error_mask = identify_water_errors(year_lab_df)
+                year_valid_df = year_lab_df[~year_water_error_mask]
 
                 # Get latest reading
                 if valid_df.empty:
@@ -284,18 +322,31 @@ def create_html_dashboard(
 
                 # Calculate statistics from valid data only
                 if valid_df.empty:
-                    avg_water = lab_df["Water"].mean()
                     max_water = lab_df["Water"].max()
-                    min_water = lab_df["Water"].min()
                     total_water = lab_df["Water"].sum()
                 else:
-                    avg_water = valid_df["Water"].mean()
                     max_water = valid_df["Water"].max()
-                    min_water = valid_df["Water"].min()
                     total_water = valid_df["Water"].sum()
 
-                # Calculate daily average (last 7 days)
-                days_of_data = (datetime.now() - last_week).days
+                # Calculate this-year total and start date
+                if year_valid_df.empty:
+                    total_water_year = year_lab_df["Water"].sum()
+                    total_start_date = year_lab_df["Timestamp"].min()
+                else:
+                    total_water_year = year_valid_df["Water"].sum()
+                    total_start_date = year_valid_df["Timestamp"].min()
+
+                if pd.isna(total_start_date):
+                    start_date_label = "N/A"
+                else:
+                    start_date_label = pd.to_datetime(total_start_date).strftime(
+                        "%Y-%m-%d"
+                    )
+
+                olympic_pool_equivalent = total_water_year / OLYMPIC_POOL_VOLUME_L
+
+                # Calculate daily average for the analysis window
+                days_of_data = ANALYSIS_WINDOW_DAYS
                 daily_avg = total_water / days_of_data if days_of_data > 0 else 0
 
                 html_lines += [
@@ -307,15 +358,20 @@ def create_html_dashboard(
                     f"        <p><strong>Data Quality:</strong> {water_errors} error(s) detected and excluded from analysis</p>",
                     "      </div>",
                     '      <div class="stats-grid">',
-                    '        <div class="stat-card water">',
-                    "          <h3>Current Reading</h3>",
-                    f'          <div class="value">{latest_water:.1f}</div>',
+                    '        <div class="stat-card consumption">',
+                    f"          <h3>Total ({ANALYSIS_WINDOW_DAYS} days)</h3>",
+                    f'          <div class="value">{total_water:.1f}</div>',
                     '          <div class="unit">L</div>',
                     "        </div>",
                     '        <div class="stat-card consumption">',
-                    "          <h3>Total (7 days)</h3>",
-                    f'          <div class="value">{total_water:.1f}</div>',
-                    '          <div class="unit">L</div>',
+                    "          <h3>Total (This Year)</h3>",
+                    f'          <div class="value">{total_water_year:.1f}</div>',
+                    f'          <div class="unit">L (since {start_date_label})</div>',
+                    "        </div>",
+                    '        <div class="stat-card consumption">',
+                    "          <h3>Olympic Pools (This Year)</h3>",
+                    f'          <div class="value">{olympic_pool_equivalent:.6f}</div>',
+                    '          <div class="unit">pools (YTD)</div>',
                     "        </div>",
                     '        <div class="stat-card water">',
                     "          <h3>Daily Average</h3>",
@@ -336,9 +392,9 @@ def create_html_dashboard(
                         f'      <img src="{plot_files[key]}" alt="{get_display_label(lab_id, sublab_id)} trends" />'
                     )
 
-                # Add data table (last 20 records)
+                # Add data table (last 10 records)
                 html_lines += [
-                    "      <h3>Recent History (Last 20 Records)</h3>",
+                    "      <h3>Recent History (Last 10 Records)</h3>",
                     "      <table>",
                     "        <thead>",
                     "          <tr>",
@@ -349,7 +405,7 @@ def create_html_dashboard(
                     "        <tbody>",
                 ]
 
-                for _, data_row in lab_df.head(20).iterrows():
+                for _, data_row in lab_df.head(10).iterrows():
                     html_lines.append(
                         f"          <tr><td>{data_row['Timestamp'].strftime('%Y-%m-%d %H:%M:%S')}</td>"
                         f"<td>{data_row['Water']:.2f}</td></tr>"
