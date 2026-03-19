@@ -121,6 +121,35 @@ def is_light_on(light_level: float, lab_id: int, sublab_id: int) -> Optional[boo
     return light_level > threshold
 
 
+def get_room_light_presence_data(
+    light_df: pd.DataFrame, lab_id: int, sublab_id: int
+) -> Optional[pd.DataFrame]:
+    """Prepare room light presence data using the configured room-light threshold.
+
+    Presence is considered on when light exceeds room_light_on_threshold_lux.
+
+    Args:
+        light_df: DataFrame with Timestamp and Light columns
+        lab_id: Laboratory ID
+        sublab_id: Sublaboratory/Fumehood ID
+
+    Returns:
+        Sorted DataFrame with a Presence column containing 1 or 0, or None if
+        no room-light threshold is configured.
+    """
+    thresholds = LIGHT_THRESHOLDS.get((lab_id, sublab_id))
+    if thresholds is None:
+        return None
+
+    threshold = thresholds.get("room_light_on_threshold_lux")
+    if threshold is None or light_df.empty:
+        return None
+
+    light_sorted = light_df.sort_values("Timestamp").reset_index(drop=True).copy()
+    light_sorted["Presence"] = (light_sorted["Light"] > threshold).astype(int)
+    return light_sorted
+
+
 def identify_light_errors(df: pd.DataFrame) -> pd.Series:
     """Identify light reading errors based on consecutive zeros and values above 500 lux.
 
@@ -231,44 +260,60 @@ def add_night_shading(ax, light_df: pd.DataFrame, lab_id: int, sublab_id: int) -
         lab_id: Laboratory ID
         sublab_id: Sublaboratory ID
     """
-    # Check if threshold is available
-    if (lab_id, sublab_id) not in LIGHT_THRESHOLDS:
+    presence_df = get_room_light_presence_data(light_df, lab_id, sublab_id)
+    if presence_df is None:
         return
-
-    if "room_light_on_threshold_lux" not in LIGHT_THRESHOLDS[(lab_id, sublab_id)]:
-        return
-
-    if light_df.empty:
-        return
-
-    threshold = LIGHT_THRESHOLDS[(lab_id, sublab_id)]["room_light_on_threshold_lux"]
-
-    # Sort by timestamp
-    light_sorted = light_df.sort_values("Timestamp").reset_index(drop=True)
-
-    # Find periods where light is below threshold
-    light_sorted["below_threshold"] = light_sorted["Light"] <= threshold
 
     # Find the start and end of each period below threshold
     i = 0
-    while i < len(light_sorted):
-        if light_sorted.loc[i, "below_threshold"]:
+    while i < len(presence_df):
+        if presence_df.loc[i, "Presence"] == 0:
             # Start of a dark period
-            period_start = light_sorted.loc[i, "Timestamp"]
+            period_start = presence_df.loc[i, "Timestamp"]
 
             # Find the end of this dark period
             j = i
-            while j < len(light_sorted) and light_sorted.loc[j, "below_threshold"]:
+            while j < len(presence_df) and presence_df.loc[j, "Presence"] == 0:
                 j += 1
 
             # Shade from period_start to the last timestamp in this period
             if j > i:
-                period_end = light_sorted.loc[j - 1, "Timestamp"]
+                period_end = presence_df.loc[j - 1, "Timestamp"]
                 ax.axvspan(period_start, period_end, alpha=0.1, color="grey", zorder=0)
 
             i = j
         else:
             i += 1
+
+
+def add_presence_subplot(
+    ax, light_df: pd.DataFrame, lab_id: int, sublab_id: int
+) -> None:
+    """Plot room-light-based lab presence as a thin 0/1 strip over time."""
+    presence_df = get_room_light_presence_data(light_df, lab_id, sublab_id)
+    if presence_df is None:
+        ax.set_visible(False)
+        return
+
+    ax.step(
+        presence_df["Timestamp"],
+        presence_df["Presence"],
+        where="post",
+        color="#2c3e50",
+        linewidth=1.2,
+    )
+    ax.fill_between(
+        presence_df["Timestamp"],
+        presence_df["Presence"],
+        step="post",
+        alpha=0.15,
+        color="#95a5a6",
+    )
+    ax.set_ylabel("Presence")
+    ax.set_ylim(-0.1, 1.1)
+    ax.set_yticks([0, 1])
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.set_title("Lab Presence")
 
 
 def add_fumehood_light_shading(
@@ -322,6 +367,52 @@ def add_fumehood_light_shading(
             i = j
         else:
             i += 1
+
+
+def configure_time_axis(ax, mdates_module) -> None:
+    """Configure the shared time axis to show midnight and noon ticks."""
+    ax.xaxis.set_major_locator(mdates_module.HourLocator(byhour=[0, 12]))
+    ax.xaxis.set_major_formatter(mdates_module.DateFormatter("%Y-%m-%d %H:%M"))
+    ax.tick_params(axis="x", labelrotation=30)
+
+
+def get_daily_presence_hours(presence_df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate room-light presence to daily hours present."""
+    daily_presence = presence_df.copy()
+    daily_presence["Day"] = daily_presence["Timestamp"].dt.floor("D")
+    daily_hours = (
+        daily_presence.groupby("Day", as_index=False)["Presence"]
+        .mean()
+        .rename(columns={"Presence": "HoursPresent"})
+    )
+    daily_hours["HoursPresent"] = daily_hours["HoursPresent"] * 24
+    return daily_hours
+
+
+def add_daily_presence_hours_subplot(ax, presence_df: pd.DataFrame) -> None:
+    """Plot daily lab presence hours as a bar chart."""
+    daily_hours_df = get_daily_presence_hours(presence_df)
+    if daily_hours_df.empty:
+        ax.set_visible(False)
+        return
+
+    day_labels = daily_hours_df["Day"].dt.strftime("%Y-%m-%d")
+    day_positions = range(len(daily_hours_df))
+
+    ax.bar(
+        day_positions,
+        daily_hours_df["HoursPresent"],
+        width=0.8,
+        color="#16a085",
+        alpha=0.8,
+        align="center",
+    )
+    ax.set_ylabel("Presence\n(hrs/day)")
+    ax.set_ylim(0, 12)
+    ax.set_xticks(list(day_positions))
+    ax.set_xticklabels(day_labels, rotation=0, ha="center")
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.set_title("Lab Presence by Day")
 
 
 def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]:
@@ -397,10 +488,24 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             if plot_distance_df.empty:
                 plot_distance_df = None
 
-        # Create figure with two subplots (Sash % / Distance and Light)
-        fig, (ax1, ax2) = plt.subplots(
-            2, 1, figsize=(12, 10), sharex=True, gridspec_kw={"hspace": 0.3}
-        )
+        presence_df = get_room_light_presence_data(light_df, lab_id, sublab_id)
+
+        if presence_df is not None:
+            fig, (ax1, ax2, ax3, ax_gap, ax4) = plt.subplots(
+                5,
+                1,
+                figsize=(12, 14),
+                gridspec_kw={"hspace": 0.3, "height_ratios": [3, 3, 1.1, 0.55, 1.8]},
+            )
+            ax2.sharex(ax1)
+            ax3.sharex(ax1)
+            ax_gap.axis("off")
+        else:
+            fig, (ax1, ax2) = plt.subplots(
+                2, 1, figsize=(12, 10), sharex=True, gridspec_kw={"hspace": 0.3}
+            )
+            ax3 = None
+            ax4 = None
 
         # Plot Sash Opening Percentage or Distance
         if has_calibration and plot_distance_df is not None:
@@ -433,7 +538,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
                 f"{get_display_label(lab_id, sublab_id)}: Sash Raw Distance ({distance_errors} distance errors excluded)"
             )
         ax1.grid(True, alpha=0.3)
-        ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
+        configure_time_axis(ax1, mdates)
 
         # Plot Light
         if not light_df.empty:
@@ -446,13 +551,20 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
                 linewidth=2,
                 markersize=4,
             )
-        ax2.set_xlabel("Date Time")
         ax2.set_ylabel("Light (lux)")
         ax2.set_title(
             f"{get_display_label(lab_id, sublab_id)}: Light Level ({light_errors} light errors excluded)"
         )
         ax2.grid(True, alpha=0.3)
-        ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
+        configure_time_axis(ax2, mdates)
+
+        if ax3 is not None and ax4 is not None and presence_df is not None:
+            add_presence_subplot(ax3, light_df, lab_id, sublab_id)
+            configure_time_axis(ax3, mdates)
+            add_daily_presence_hours_subplot(ax4, presence_df)
+            ax4.set_xlabel("Date")
+        else:
+            ax2.set_xlabel("Date Time")
 
         # Add shading for periods when room lights are off (based on light sensor)
         if not light_df.empty:
@@ -461,13 +573,20 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
             add_fumehood_light_shading(ax1, light_df, lab_id, sublab_id)
             add_fumehood_light_shading(ax2, light_df, lab_id, sublab_id)
 
-        fig.autofmt_xdate()
-        plt.tight_layout()
+        if ax3 is not None:
+            ax1.tick_params(axis="x", which="both", labelbottom=False)
+            ax2.tick_params(axis="x", which="both", labelbottom=False)
+            ax3.set_xlabel("Date Time")
+            ax3.xaxis.labelpad = 10
+            ax3.tick_params(axis="x", which="both", labelbottom=True, pad=8)
+            plt.setp(ax3.get_xticklabels(), visible=True, rotation=30, ha="right")
+
+        fig.tight_layout()
 
         # Save plot
         plot_file = plot_dir / f"fumehood_lab{lab_id}_sublab{sublab_id}.png"
-        plt.savefig(plot_file, dpi=150, bbox_inches="tight")
-        plt.close()
+        fig.savefig(plot_file, dpi=150, bbox_inches="tight")
+        plt.close(fig)
 
         plot_files[key] = plot_file.name
 
@@ -657,10 +776,32 @@ def create_html_dashboard(
 
             # Calculate light on metrics if threshold data available
             has_light_threshold = (lab_id, sublab_id) in LIGHT_THRESHOLDS
+            has_presence_threshold = False
+            hours_per_week_lab_present = None
             hours_per_day_fumehood_light_on = None
             hours_per_day_fumehood_open_room_lights_off = None
 
             if has_light_threshold:
+                has_presence_threshold = (
+                    "room_light_on_threshold_lux"
+                    in LIGHT_THRESHOLDS[(lab_id, sublab_id)]
+                )
+
+                if has_presence_threshold:
+                    presence_readings = (
+                        valid_light_df["Light"]
+                        > LIGHT_THRESHOLDS[(lab_id, sublab_id)][
+                            "room_light_on_threshold_lux"
+                        ]
+                    ).sum()
+                    total_presence_readings = len(valid_light_df)
+                    percent_time_present = (
+                        (presence_readings / total_presence_readings * 100)
+                        if total_presence_readings > 0
+                        else 0
+                    )
+                    hours_per_week_lab_present = (percent_time_present / 100) * (24 * 7)
+
                 # Calculate hours per day fumehood light was on
                 light_on_readings = (
                     valid_light_df["Light"]
@@ -736,24 +877,16 @@ def create_html_dashboard(
 
             # Add stat cards based on calibration availability
             if has_calibration and avg_sash_percent is not None:
-                # Use calculated latest_sash_percent or fall back to average
-                display_sash_percent = (
-                    latest_sash_percent
-                    if latest_sash_percent is not None
-                    else avg_sash_percent
-                )
+                if has_presence_threshold and hours_per_week_lab_present is not None:
+                    html_lines += [
+                        '        <div class="stat-card light">',
+                        "          <h3>Lab Presence</h3>",
+                        f'          <div class="value">{hours_per_week_lab_present:.1f}</div>',
+                        '          <div class="unit">hrs/week</div>',
+                        "        </div>",
+                    ]
 
                 html_lines += [
-                    '        <div class="stat-card distance">',
-                    "          <h3>Current Sash Opening</h3>",
-                    f'          <div class="value">{display_sash_percent:.1f}</div>',
-                    '          <div class="unit">%</div>',
-                    "        </div>",
-                    '        <div class="stat-card light">',
-                    "          <h3>Current Light</h3>",
-                    f'          <div class="value">{latest_light:.1f}</div>',
-                    '          <div class="unit">lux</div>',
-                    "        </div>",
                     '        <div class="stat-card distance">',
                     "          <h3>Avg Sash Opening</h3>",
                     f'          <div class="value">{avg_sash_percent:.1f}</div>',
@@ -792,16 +925,31 @@ def create_html_dashboard(
                     f'          <div class="value">{latest_distance:.1f}</div>',
                     '          <div class="unit">mm</div>',
                     "        </div>",
-                    '        <div class="stat-card light">',
-                    "          <h3>Current Light</h3>",
-                    f'          <div class="value">{latest_light:.1f}</div>',
-                    '          <div class="unit">lux</div>',
-                    "        </div>",
                     '        <div class="stat-card distance">',
                     "          <h3>Avg Distance</h3>",
                     f'          <div class="value">{avg_distance:.1f}</div>',
                     '          <div class="unit">mm</div>',
                     "        </div>",
+                ]
+
+                if has_presence_threshold and hours_per_week_lab_present is not None:
+                    html_lines += [
+                        '        <div class="stat-card light">',
+                        "          <h3>Lab Presence</h3>",
+                        f'          <div class="value">{hours_per_week_lab_present:.1f}</div>',
+                        '          <div class="unit">hrs/week</div>',
+                        "        </div>",
+                    ]
+                else:
+                    html_lines += [
+                        '        <div class="stat-card light">',
+                        "          <h3>Current Light</h3>",
+                        f'          <div class="value">{latest_light:.1f}</div>',
+                        '          <div class="unit">lux</div>',
+                        "        </div>",
+                    ]
+
+                html_lines += [
                     '        <div class="stat-card light">',
                     "          <h3>Avg Light</h3>",
                     f'          <div class="value">{avg_light:.1f}</div>',
@@ -837,9 +985,9 @@ def create_html_dashboard(
                     f'      <img src="{plot_files[key]}" alt="{get_display_label(lab_id, sublab_id)} trends" />'
                 )
 
-            # Add data table (last 20 records)
+            # Add data table (last 10 records)
             html_lines += [
-                "      <h3>Recent History (Last 20 Records)</h3>",
+                "      <h3>Recent History (Last 10 Records)</h3>",
                 "      <table>",
                 "        <thead>",
                 "          <tr>",
@@ -852,7 +1000,7 @@ def create_html_dashboard(
                 "        <tbody>",
             ]
 
-            for _, data_row in lab_df.head(20).iterrows():
+            for _, data_row in lab_df.head(10).iterrows():
                 html_lines.append(
                     f"          <tr><td>{data_row['Timestamp'].strftime('%Y-%m-%d %H:%M:%S')}</td>"
                     f"<td>{data_row['Distance']:.2f}</td><td>{data_row['Light']:.2f}</td>"
