@@ -130,7 +130,7 @@ def calculate_idle_power(df_granular: pd.DataFrame) -> float:
     df["Hour"] = df["Timestamp"].dt.hour
 
     # Filter for 1am-5am hours (1, 2, 3, 4)
-    idle_data = df[(df["Hour"] >= 1) & (df["Hour"] < 5)]
+    idle_data = df.loc[(df["Hour"] >= 1) & (df["Hour"] < 5)].copy()
 
     if idle_data.empty:
         print("Warning: No data found for idle hours (1am-5am)")
@@ -139,7 +139,7 @@ def calculate_idle_power(df_granular: pd.DataFrame) -> float:
     # EnergyValue is energy consumption in kWh for the 1-minute interval
     # Convert to average power: Power (kW) = Energy (kWh) / Time (hours)
     # Time = 1 minute = 1/60 hour, so Power = Energy / (1/60) = Energy * 60
-    idle_data["Power_kW"] = idle_data["EnergyValue"] * 60
+    idle_data.loc[:, "Power_kW"] = idle_data["EnergyValue"] * 60
 
     avg_idle_power = idle_data["Power_kW"].mean()
 
@@ -387,10 +387,14 @@ def create_html_dashboard(
 
         fun_context = kwh_in_context_three(avg_consumption)
 
-        # Linear trend fit over daily data: % decrease from fitted start to end.
-        trend_decrease_pct = 0.0
+        # Linear trend fit over last year of daily data: % change from fitted start to end.
+        # Negative means decrease, positive means increase.
+        trend_change_pct = 0.0
         trend_subtext = "Insufficient data"
-        df_trend = df.sort_values("Datestamp")
+        one_year_ago = datetime.now() - timedelta(days=365)
+        df_trend = df[df["Datestamp"] >= one_year_ago].sort_values(  # type: ignore[call-overload]
+            by=["Datestamp"]
+        )
         if len(df_trend) >= 2:
             x_days = (
                 df_trend["Datestamp"] - df_trend["Datestamp"].min()
@@ -417,13 +421,12 @@ def create_html_dashboard(
 
                 if start_fit > 0:
                     trend_change_pct = ((end_fit - start_fit) / start_fit) * 100
-                    trend_decrease_pct = -trend_change_pct
                 else:
-                    trend_decrease_pct = 0.0
+                    trend_change_pct = 0.0
 
                 start_date = df_trend.iloc[0]["Datestamp"].strftime("%Y-%m-%d")
                 end_date = df_trend.iloc[-1]["Datestamp"].strftime("%Y-%m-%d")
-                trend_subtext = f"Linear trend from {start_date} to {end_date}"
+                trend_subtext = f"from {start_date} to {end_date}"
 
         # Calculate monthly averages
         df_monthly = df.copy()
@@ -436,7 +439,7 @@ def create_html_dashboard(
         total_days = 0
         monthly_avg = pd.DataFrame()
         fun_context = {"kettles_boiled": 0, "ev_miles": 0, "blue_whale_lifts": 0}
-        trend_decrease_pct = 0.0
+        trend_change_pct = 0.0
         trend_subtext = "No data"
 
     html_lines = [
@@ -507,7 +510,7 @@ def create_html_dashboard(
             "      </div>",
             '      <div class="stat-card green">',
             "        <h3>Consumption Trend</h3>",
-            f'        <div class="value">{trend_decrease_pct:.1f}%</div>',
+            f'        <div class="value">{trend_change_pct:+.1f}%</div>',
             '        <div class="unit">linear-fit change</div>',
             f'        <div class="subtext">{trend_subtext}</div>',
             "      </div>",
