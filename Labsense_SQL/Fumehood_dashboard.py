@@ -150,6 +150,29 @@ def get_room_light_presence_data(
     return light_sorted
 
 
+def _presence_segment_ids(
+    presence_df: pd.DataFrame, fallback_gap: pd.Timedelta = pd.Timedelta(minutes=30)
+) -> pd.Series:
+    """Create segment ids that break when there is a large gap between readings.
+
+    A new segment starts when the gap between consecutive timestamps exceeds the
+    larger of 3x median cadence and a fixed fallback gap.
+    """
+    if presence_df.empty:
+        return pd.Series(dtype="int64")
+
+    time_gaps = presence_df["Timestamp"].diff()
+    median_gap = time_gaps.dropna().median()
+
+    if pd.isna(median_gap):
+        gap_threshold = fallback_gap
+    else:
+        gap_threshold = max(fallback_gap, median_gap * 3)
+
+    segment_breaks = time_gaps.isna() | (time_gaps > gap_threshold)
+    return segment_breaks.cumsum()
+
+
 def identify_light_errors(df: pd.DataFrame) -> pd.Series:
     """Identify light reading errors based on consecutive zeros and values above 500 lux.
 
@@ -264,26 +287,28 @@ def add_night_shading(ax, light_df: pd.DataFrame, lab_id: int, sublab_id: int) -
     if presence_df is None:
         return
 
-    # Find the start and end of each period below threshold
-    i = 0
-    while i < len(presence_df):
-        if presence_df.loc[i, "Presence"] == 0:
-            # Start of a dark period
-            period_start = presence_df.loc[i, "Timestamp"]
+    # Break shading across data gaps so missing periods are not inferred
+    segment_ids = _presence_segment_ids(presence_df)
+    for _, segment in presence_df.groupby(segment_ids):
+        i = 0
+        segment = segment.reset_index(drop=True)
+        while i < len(segment):
+            if segment.loc[i, "Presence"] == 0:
+                period_start = segment.loc[i, "Timestamp"]
 
-            # Find the end of this dark period
-            j = i
-            while j < len(presence_df) and presence_df.loc[j, "Presence"] == 0:
-                j += 1
+                j = i
+                while j < len(segment) and segment.loc[j, "Presence"] == 0:
+                    j += 1
 
-            # Shade from period_start to the last timestamp in this period
-            if j > i:
-                period_end = presence_df.loc[j - 1, "Timestamp"]
-                ax.axvspan(period_start, period_end, alpha=0.1, color="grey", zorder=0)
+                if j > i:
+                    period_end = segment.loc[j - 1, "Timestamp"]
+                    ax.axvspan(
+                        period_start, period_end, alpha=0.1, color="grey", zorder=0
+                    )
 
-            i = j
-        else:
-            i += 1
+                i = j
+            else:
+                i += 1
 
 
 def add_presence_subplot(
@@ -295,20 +320,23 @@ def add_presence_subplot(
         ax.set_visible(False)
         return
 
-    ax.step(
-        presence_df["Timestamp"],
-        presence_df["Presence"],
-        where="post",
-        color="#2c3e50",
-        linewidth=1.2,
-    )
-    ax.fill_between(
-        presence_df["Timestamp"],
-        presence_df["Presence"],
-        step="post",
-        alpha=0.15,
-        color="#95a5a6",
-    )
+    # Plot each contiguous segment separately so gaps with no data remain blank
+    segment_ids = _presence_segment_ids(presence_df)
+    for _, segment in presence_df.groupby(segment_ids):
+        ax.step(
+            segment["Timestamp"],
+            segment["Presence"],
+            where="post",
+            color="#2c3e50",
+            linewidth=1.2,
+        )
+        ax.fill_between(
+            segment["Timestamp"],
+            segment["Presence"],
+            step="post",
+            alpha=0.15,
+            color="#95a5a6",
+        )
     ax.set_ylabel("Presence")
     ax.set_ylim(-0.1, 1.1)
     ax.set_yticks([0, 1])
@@ -377,15 +405,58 @@ def configure_time_axis(ax, mdates_module) -> None:
 
 
 def get_daily_presence_hours(presence_df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate room-light presence to daily hours present."""
-    daily_presence = presence_df.copy()
-    daily_presence["Day"] = daily_presence["Timestamp"].dt.floor("D")
-    daily_hours = (
-        daily_presence.groupby("Day", as_index=False)["Presence"]
-        .mean()
-        .rename(columns={"Presence": "HoursPresent"})
+    """Aggregate room-light presence to daily hours present.
+
+    Uses gap-aware contiguous segments so periods with no data do not contribute to
+    daily presence, keeping behavior consistent with the presence strip plot.
+    """
+    if presence_df.empty:
+        return pd.DataFrame(columns=["Day", "HoursPresent"])
+
+    presence_sorted = presence_df.sort_values("Timestamp").reset_index(drop=True).copy()
+    segment_ids = _presence_segment_ids(presence_sorted)
+
+    # Include all days that have any readings so days with data but no presence show as 0 bars
+    days_with_data = (
+        presence_sorted["Timestamp"].dt.floor("D").drop_duplicates().sort_values()
     )
-    daily_hours["HoursPresent"] = daily_hours["HoursPresent"] * 24
+
+    daily_seconds: Dict[pd.Timestamp, float] = {}
+
+    for _, segment in presence_sorted.groupby(segment_ids):
+        segment = segment.reset_index(drop=True)
+        if len(segment) < 2:
+            continue
+
+        for i in range(len(segment) - 1):
+            start = pd.Timestamp(segment.loc[i, "Timestamp"])
+            end = pd.Timestamp(segment.loc[i + 1, "Timestamp"])
+            if end <= start:
+                continue
+
+            presence_value = int(segment.loc[i, "Presence"])
+            if presence_value != 1:
+                continue
+
+            current = start
+            while current < end:
+                day_start = current.floor("D")
+                next_day = day_start + pd.Timedelta(days=1)
+                chunk_end = min(end, next_day)
+                seconds = (chunk_end - current).total_seconds()
+
+                daily_seconds[day_start] = daily_seconds.get(day_start, 0.0) + seconds
+                current = chunk_end
+
+    daily_hours = pd.DataFrame(
+        {
+            "Day": days_with_data,
+            "HoursPresent": [
+                daily_seconds.get(day, 0.0) / 3600 for day in days_with_data
+            ],
+        }
+    ).sort_values("Day")
+
     return daily_hours
 
 
@@ -788,19 +859,16 @@ def create_html_dashboard(
                 )
 
                 if has_presence_threshold:
-                    presence_readings = (
-                        valid_light_df["Light"]
-                        > LIGHT_THRESHOLDS[(lab_id, sublab_id)][
-                            "room_light_on_threshold_lux"
-                        ]
-                    ).sum()
-                    total_presence_readings = len(valid_light_df)
-                    percent_time_present = (
-                        (presence_readings / total_presence_readings * 100)
-                        if total_presence_readings > 0
-                        else 0
+                    presence_df = get_room_light_presence_data(
+                        valid_light_df, lab_id, sublab_id
                     )
-                    hours_per_week_lab_present = (percent_time_present / 100) * (24 * 7)
+                    if presence_df is not None and not presence_df.empty:
+                        daily_presence_hours_df = get_daily_presence_hours(presence_df)
+                        hours_per_week_lab_present = daily_presence_hours_df[
+                            "HoursPresent"
+                        ].sum()
+                    else:
+                        hours_per_week_lab_present = 0
 
                 # Calculate hours per day fumehood light was on
                 light_on_readings = (
