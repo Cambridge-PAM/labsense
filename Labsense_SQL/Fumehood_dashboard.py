@@ -200,6 +200,12 @@ def _shade_boolean_intervals(
         return
 
     shaded_df = df.sort_values("Timestamp").reset_index(drop=True).copy()
+    time_gaps = shaded_df["Timestamp"].diff().dropna()
+    if time_gaps.empty or pd.isna(time_gaps.median()):
+        typical_gap = pd.Timedelta(minutes=5)
+    else:
+        typical_gap = pd.Timedelta(time_gaps.median())
+
     segment_ids = _timestamp_segment_ids(shaded_df)
 
     for _, segment in shaded_df.groupby(segment_ids):
@@ -213,7 +219,12 @@ def _shade_boolean_intervals(
                     j += 1
 
                 if j > i:
-                    period_end = segment.loc[j - 1, "Timestamp"]
+                    # Extend to the next sample boundary so single-point intervals remain visible.
+                    if j < len(segment):
+                        period_end = segment.loc[j, "Timestamp"]
+                    else:
+                        period_end = segment.loc[j - 1, "Timestamp"] + typical_gap
+
                     ax.axvspan(
                         period_start,
                         period_end,
@@ -457,13 +468,13 @@ def add_sash_usage_shading(
 
     # Layering: good use first, hood light next, unattended open on top.
     _shade_boolean_intervals(
-        ax, working, "GoodUse", color="#2ecc71", alpha=0.16, zorder=0
+        ax, working, "GoodUse", color="#2ecc71", alpha=0.32, zorder=1
     )
     _shade_boolean_intervals(
-        ax, working, "FumehoodLightOn", color="#f39c12", alpha=0.12, zorder=1
+        ax, working, "FumehoodLightOn", color="#f39c12", alpha=0.28, zorder=2
     )
     _shade_boolean_intervals(
-        ax, working, "BadUse", color="#e74c3c", alpha=0.22, zorder=2
+        ax, working, "BadUse", color="#e74c3c", alpha=0.42, zorder=3
     )
 
 
@@ -480,10 +491,10 @@ def add_light_intensity_presence_shading(
     working["PresenceOff"] = working["Presence"] == 0
 
     _shade_boolean_intervals(
-        ax, working, "PresenceOff", color="#95a5a6", alpha=0.14, zorder=0
+        ax, working, "PresenceOff", color="#95a5a6", alpha=0.30, zorder=1
     )
     _shade_boolean_intervals(
-        ax, working, "PresenceOn", color="#2ecc71", alpha=0.12, zorder=1
+        ax, working, "PresenceOn", color="#2ecc71", alpha=0.24, zorder=2
     )
 
 
@@ -510,7 +521,7 @@ def add_presence_subplot(
             segment["Timestamp"],
             segment["Presence"],
             step="post",
-            alpha=0.15,
+            alpha=0.25,
             color="#95a5a6",
         )
     ax.set_ylabel("Presence")
