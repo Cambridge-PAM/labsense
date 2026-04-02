@@ -483,7 +483,9 @@ def _build_sash_usage_state(
     else:
         working["FumehoodLightOn"] = False
 
-    working["GoodUse"] = working["SashOpen"] & (working["Presence"] == 1)
+    working["GoodUse"] = (working["SashOpen"] & (working["Presence"] == 1)) | (
+        (~working["SashOpen"]) & (working["Presence"] == 0)
+    )
     working["BadUse"] = working["SashOpen"] & (working["Presence"] == 0)
     return working
 
@@ -495,7 +497,7 @@ def add_sash_usage_shading(
     lab_id: int,
     sublab_id: int,
 ) -> None:
-    """Shade sash chart: good use (green), unattended open (red), and hood light on (orange)."""
+    """Shade sash chart: good behavior (green), unattended open (red), hood light on (orange)."""
     working = _build_sash_usage_state(distance_df, light_df, lab_id, sublab_id)
     if working.empty:
         return
@@ -515,7 +517,7 @@ def add_sash_usage_shading(
 def add_light_intensity_presence_shading(
     ax, light_df: pd.DataFrame, lab_id: int, sublab_id: int
 ) -> None:
-    """Shade light chart: presence green, non-presence grey; no-data remains white."""
+    """Shade light chart: presence yellow, non-presence grey; no-data remains white."""
     presence_df = get_room_light_presence_data(light_df, lab_id, sublab_id)
     if presence_df is None or presence_df.empty:
         return
@@ -525,10 +527,10 @@ def add_light_intensity_presence_shading(
     working["PresenceOff"] = working["Presence"] == 0
 
     _shade_boolean_intervals(
-        ax, working, "PresenceOff", color="#e74c3c", alpha=0.30, zorder=1
+        ax, working, "PresenceOff", color="#95a5a6", alpha=0.30, zorder=1
     )
     _shade_boolean_intervals(
-        ax, working, "PresenceOn", color="#2ecc71", alpha=0.24, zorder=2
+        ax, working, "PresenceOn", color="#f1c40f", alpha=0.24, zorder=2
     )
 
 
@@ -659,6 +661,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
     try:
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
+        from matplotlib.patches import Patch
     except ImportError:
         print("matplotlib not available - skipping plots")
         return {}
@@ -807,9 +810,42 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
 
         # Sash chart shading: good use (green), unattended open (red), hood light on (orange)
         add_sash_usage_shading(ax1, distance_df, light_df, lab_id, sublab_id)
+        sash_shading_legend = [
+            Patch(facecolor="#2ecc71", alpha=0.32, label="Good behavior"),
+            Patch(facecolor="#e74c3c", alpha=0.42, label="Unattended hood open"),
+            Patch(facecolor="#f39c12", alpha=0.28, label="Fumehood light on"),
+            Patch(
+                facecolor="white",
+                edgecolor="#7f8c8d",
+                label="No data",
+            ),
+        ]
+        ax1.legend(
+            handles=sash_shading_legend,
+            title="Shading",
+            loc="upper right",
+            fontsize=8,
+            title_fontsize=9,
+        )
 
-        # Light chart shading: presence (green), non-presence (grey), no-data (white background)
+        # Light chart shading: presence (yellow), non-presence (grey), no-data (white background)
         add_light_intensity_presence_shading(ax2, light_df, lab_id, sublab_id)
+        light_shading_legend = [
+            Patch(facecolor="#f1c40f", alpha=0.24, label="Presence on"),
+            Patch(facecolor="#95a5a6", alpha=0.30, label="Presence off"),
+            Patch(
+                facecolor="white",
+                edgecolor="#7f8c8d",
+                label="No data",
+            ),
+        ]
+        ax2.legend(
+            handles=light_shading_legend,
+            title="Shading",
+            loc="upper right",
+            fontsize=8,
+            title_fontsize=9,
+        )
 
         if ax3 is not None:
             ax1.tick_params(axis="x", which="both", labelbottom=False)
