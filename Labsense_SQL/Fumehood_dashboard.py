@@ -483,7 +483,8 @@ def _build_sash_usage_state(
     else:
         working["FumehoodLightOn"] = False
 
-    working["GoodUse"] = (working["SashOpen"] & (working["Presence"] == 1)) | (
+    # Treat all states as good except unattended-open (sash open while presence is off).
+    working["GoodUse"] = (working["Presence"] == 1) | (
         (~working["SashOpen"]) & (working["Presence"] == 0)
     )
     working["BadUse"] = working["SashOpen"] & (working["Presence"] == 0)
