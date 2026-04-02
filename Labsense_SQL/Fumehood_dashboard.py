@@ -811,8 +811,8 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         # Sash chart shading: good use (green), unattended open (red), hood light on (orange)
         add_sash_usage_shading(ax1, distance_df, light_df, lab_id, sublab_id)
         sash_shading_legend = [
-            Patch(facecolor="#2ecc71", alpha=0.32, label="Good behavior"),
-            Patch(facecolor="#e74c3c", alpha=0.42, label="Unattended hood open"),
+            Patch(facecolor="#2ecc71", alpha=0.32, label="Good behaviour"),
+            Patch(facecolor="#e74c3c", alpha=0.42, label="Bad behaviour"),
             Patch(facecolor="#f39c12", alpha=0.28, label="Fumehood light on"),
             Patch(
                 facecolor="white",
@@ -831,8 +831,8 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         # Light chart shading: presence (yellow), non-presence (grey), no-data (white background)
         add_light_intensity_presence_shading(ax2, light_df, lab_id, sublab_id)
         light_shading_legend = [
-            Patch(facecolor="#f1c40f", alpha=0.24, label="Presence on"),
-            Patch(facecolor="#95a5a6", alpha=0.30, label="Presence off"),
+            Patch(facecolor="#f1c40f", alpha=0.24, label="Active"),
+            Patch(facecolor="#95a5a6", alpha=0.30, label="Inactive"),
             Patch(
                 facecolor="white",
                 edgecolor="#7f8c8d",
