@@ -21,7 +21,6 @@ import pandas as pd
 import argparse
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Tuple
-import re
 
 # SQL Server connection details
 SQL_SERVER_NAME = "MSM-FPM-70203\\LABSENSE"
@@ -114,10 +113,10 @@ def is_light_on(light_level: float, lab_id: int, sublab_id: int) -> Optional[boo
     Returns:
         True if light is on, False if off, or None if no threshold data
     """
-    if (lab_id, sublab_id) not in LIGHT_THRESHOLDS:
+    threshold = get_light_threshold(lab_id, sublab_id, "light_on_threshold_lux")
+    if threshold is None:
         return None
 
-    threshold = LIGHT_THRESHOLDS[(lab_id, sublab_id)]["light_on_threshold_lux"]
     return light_level > threshold
 
 
@@ -137,11 +136,7 @@ def get_room_light_presence_data(
         Sorted DataFrame with a Presence column containing 1 or 0, or None if
         no room-light threshold is configured.
     """
-    thresholds = LIGHT_THRESHOLDS.get((lab_id, sublab_id))
-    if thresholds is None:
-        return None
-
-    threshold = thresholds.get("room_light_on_threshold_lux")
+    threshold = get_light_threshold(lab_id, sublab_id, "room_light_on_threshold_lux")
     if threshold is None or light_df.empty:
         return None
 
@@ -171,6 +166,64 @@ def _presence_segment_ids(
 
     segment_breaks = time_gaps.isna() | (time_gaps > gap_threshold)
     return segment_breaks.cumsum()
+
+
+def _timestamp_segment_ids(
+    df: pd.DataFrame, fallback_gap: pd.Timedelta = pd.Timedelta(minutes=30)
+) -> pd.Series:
+    """Create segment ids from timestamp cadence, splitting large data gaps."""
+    if df.empty:
+        return pd.Series(dtype="int64")
+
+    time_gaps = df["Timestamp"].diff()
+    median_gap = time_gaps.dropna().median()
+
+    if pd.isna(median_gap):
+        gap_threshold = fallback_gap
+    else:
+        gap_threshold = max(fallback_gap, median_gap * 3)
+
+    segment_breaks = time_gaps.isna() | (time_gaps > gap_threshold)
+    return segment_breaks.cumsum()
+
+
+def _shade_boolean_intervals(
+    ax,
+    df: pd.DataFrame,
+    flag_column: str,
+    color: str,
+    alpha: float,
+    zorder: int,
+) -> None:
+    """Shade contiguous True intervals from a boolean column, preserving gaps."""
+    if df.empty or flag_column not in df.columns:
+        return
+
+    shaded_df = df.sort_values("Timestamp").reset_index(drop=True).copy()
+    segment_ids = _timestamp_segment_ids(shaded_df)
+
+    for _, segment in shaded_df.groupby(segment_ids):
+        segment = segment.reset_index(drop=True)
+        i = 0
+        while i < len(segment):
+            if bool(segment.loc[i, flag_column]):
+                period_start = segment.loc[i, "Timestamp"]
+                j = i
+                while j < len(segment) and bool(segment.loc[j, flag_column]):
+                    j += 1
+
+                if j > i:
+                    period_end = segment.loc[j - 1, "Timestamp"]
+                    ax.axvspan(
+                        period_start,
+                        period_end,
+                        alpha=alpha,
+                        color=color,
+                        zorder=zorder,
+                    )
+                i = j
+            else:
+                i += 1
 
 
 def identify_light_errors(df: pd.DataFrame) -> pd.Series:
@@ -253,6 +306,82 @@ def identify_distance_errors(df: pd.DataFrame) -> pd.Series:
     return is_error
 
 
+def get_light_threshold(lab_id: int, sublab_id: int, key: str) -> Optional[float]:
+    """Fetch a configured light threshold for a fumehood, if present."""
+    thresholds = LIGHT_THRESHOLDS.get((lab_id, sublab_id))
+    if thresholds is None:
+        return None
+
+    value = thresholds.get(key)
+    if value is None:
+        return None
+
+    return float(value)
+
+
+def latest_value_with_fallback(
+    valid_df: pd.DataFrame, full_df: pd.DataFrame, column: str
+):
+    """Get latest value from valid data, falling back to unfiltered data."""
+    source_df = valid_df if not valid_df.empty else full_df
+    return source_df.iloc[0][column]
+
+
+def get_column_stats_with_fallback(
+    valid_df: pd.DataFrame, full_df: pd.DataFrame, column: str
+) -> Tuple[float, float, float]:
+    """Compute mean, max, min using valid data, with full-data fallback."""
+    source_df = valid_df if not valid_df.empty else full_df
+    return (
+        float(source_df[column].mean()),
+        float(source_df[column].max()),
+        float(source_df[column].min()),
+    )
+
+
+def append_stat_card(
+    html_lines: list,
+    title: str,
+    value: float,
+    unit: str,
+    card_type: str,
+    precision: int = 1,
+) -> None:
+    """Append a single stat card to the HTML output."""
+    html_lines += [
+        f'        <div class="stat-card {card_type}">',
+        f"          <h3>{title}</h3>",
+        f'          <div class="value">{value:.{precision}f}</div>',
+        f'          <div class="unit">{unit}</div>',
+        "        </div>",
+    ]
+
+
+def append_optional_usage_cards(
+    html_lines: list,
+    hours_per_day_fumehood_light_on: Optional[float],
+    hours_per_day_fumehood_open_room_lights_off: Optional[float],
+) -> None:
+    """Append optional usage cards derived from light/sash behavioral metrics."""
+    if hours_per_day_fumehood_light_on is not None:
+        append_stat_card(
+            html_lines,
+            "Fumehood Light On",
+            hours_per_day_fumehood_light_on,
+            "hrs/day",
+            "light",
+        )
+
+    if hours_per_day_fumehood_open_room_lights_off is not None:
+        append_stat_card(
+            html_lines,
+            "Unattended Hood Open",
+            hours_per_day_fumehood_open_room_lights_off,
+            "hrs/day",
+            "light",
+        )
+
+
 def fetch_fumehood_data(connection_string: str) -> pd.DataFrame:
     """Fetch all fumehood data from SQL Server."""
     try:
@@ -274,41 +403,88 @@ def fetch_fumehood_data(connection_string: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def add_night_shading(ax, light_df: pd.DataFrame, lab_id: int, sublab_id: int) -> None:
-    """Add grey shading to indicate periods when room lights are off (below threshold).
-
-    Args:
-        ax: Matplotlib axis to shade
-        light_df: DataFrame with Timestamp and Light columns
-        lab_id: Laboratory ID
-        sublab_id: Sublaboratory ID
-    """
-    presence_df = get_room_light_presence_data(light_df, lab_id, sublab_id)
-    if presence_df is None:
+def add_sash_usage_shading(
+    ax,
+    distance_df: pd.DataFrame,
+    light_df: pd.DataFrame,
+    lab_id: int,
+    sublab_id: int,
+) -> None:
+    """Shade sash chart: good use (green), unattended open (red), and hood light on (orange)."""
+    if distance_df.empty:
         return
 
-    # Break shading across data gaps so missing periods are not inferred
-    segment_ids = _presence_segment_ids(presence_df)
-    for _, segment in presence_df.groupby(segment_ids):
-        i = 0
-        segment = segment.reset_index(drop=True)
-        while i < len(segment):
-            if segment.loc[i, "Presence"] == 0:
-                period_start = segment.loc[i, "Timestamp"]
+    working = distance_df.sort_values("Timestamp").reset_index(drop=True).copy()
+    if (lab_id, sublab_id) in FUMEHOOD_CALIBRATION:
+        working["SashPercentOpen"] = working["Distance"].apply(
+            lambda d: calculate_sash_percentage_open(d, lab_id, sublab_id)
+        )
+        working["SashOpen"] = (
+            working["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT
+        ) & working["SashPercentOpen"].notna()
+    else:
+        working["SashOpen"] = False
 
-                j = i
-                while j < len(segment) and segment.loc[j, "Presence"] == 0:
-                    j += 1
+    presence_df = get_room_light_presence_data(light_df, lab_id, sublab_id)
+    if presence_df is not None and not presence_df.empty:
+        presence_lookup = (
+            presence_df[["Timestamp", "Presence"]]
+            .set_index("Timestamp")
+            .sort_index()["Presence"]
+        )
+        aligned_presence = presence_lookup.reindex(
+            working["Timestamp"], method="nearest"
+        )
+        working["Presence"] = aligned_presence.fillna(0).astype(int)
+    else:
+        working["Presence"] = 0
 
-                if j > i:
-                    period_end = segment.loc[j - 1, "Timestamp"]
-                    ax.axvspan(
-                        period_start, period_end, alpha=0.1, color="grey", zorder=0
-                    )
+    light_threshold = get_light_threshold(lab_id, sublab_id, "light_on_threshold_lux")
+    if light_threshold is not None and not light_df.empty:
+        light_lookup = (
+            light_df[["Timestamp", "Light"]]
+            .set_index("Timestamp")
+            .sort_index()["Light"]
+        )
+        aligned_light = light_lookup.reindex(working["Timestamp"], method="nearest")
+        working["FumehoodLightOn"] = aligned_light > light_threshold
+        working["FumehoodLightOn"] = working["FumehoodLightOn"].fillna(False)
+    else:
+        working["FumehoodLightOn"] = False
 
-                i = j
-            else:
-                i += 1
+    working["GoodUse"] = working["SashOpen"] & (working["Presence"] == 1)
+    working["BadUse"] = working["SashOpen"] & (working["Presence"] == 0)
+
+    # Layering: good use first, hood light next, unattended open on top.
+    _shade_boolean_intervals(
+        ax, working, "GoodUse", color="#2ecc71", alpha=0.16, zorder=0
+    )
+    _shade_boolean_intervals(
+        ax, working, "FumehoodLightOn", color="#f39c12", alpha=0.12, zorder=1
+    )
+    _shade_boolean_intervals(
+        ax, working, "BadUse", color="#e74c3c", alpha=0.22, zorder=2
+    )
+
+
+def add_light_intensity_presence_shading(
+    ax, light_df: pd.DataFrame, lab_id: int, sublab_id: int
+) -> None:
+    """Shade light chart: presence green, non-presence grey; no-data remains white."""
+    presence_df = get_room_light_presence_data(light_df, lab_id, sublab_id)
+    if presence_df is None or presence_df.empty:
+        return
+
+    working = presence_df.copy()
+    working["PresenceOn"] = working["Presence"] == 1
+    working["PresenceOff"] = working["Presence"] == 0
+
+    _shade_boolean_intervals(
+        ax, working, "PresenceOff", color="#95a5a6", alpha=0.14, zorder=0
+    )
+    _shade_boolean_intervals(
+        ax, working, "PresenceOn", color="#2ecc71", alpha=0.12, zorder=1
+    )
 
 
 def add_presence_subplot(
@@ -342,59 +518,6 @@ def add_presence_subplot(
     ax.set_yticks([0, 1])
     ax.grid(True, axis="y", alpha=0.3)
     ax.set_title("Lab Presence")
-
-
-def add_fumehood_light_shading(
-    ax, light_df: pd.DataFrame, lab_id: int, sublab_id: int
-) -> None:
-    """Add orange shading to indicate periods when fumehood light is on (above threshold).
-
-    Args:
-        ax: Matplotlib axis to shade
-        light_df: DataFrame with Timestamp and Light columns
-        lab_id: Laboratory ID
-        sublab_id: Sublaboratory ID
-    """
-    # Check if threshold is available
-    if (lab_id, sublab_id) not in LIGHT_THRESHOLDS:
-        return
-
-    if "light_on_threshold_lux" not in LIGHT_THRESHOLDS[(lab_id, sublab_id)]:
-        return
-
-    if light_df.empty:
-        return
-
-    threshold = LIGHT_THRESHOLDS[(lab_id, sublab_id)]["light_on_threshold_lux"]
-
-    # Sort by timestamp
-    light_sorted = light_df.sort_values("Timestamp").reset_index(drop=True)
-
-    # Find periods where light is above threshold
-    light_sorted["above_threshold"] = light_sorted["Light"] > threshold
-
-    # Find the start and end of each period above threshold
-    i = 0
-    while i < len(light_sorted):
-        if light_sorted.loc[i, "above_threshold"]:
-            # Start of a light-on period
-            period_start = light_sorted.loc[i, "Timestamp"]
-
-            # Find the end of this light-on period
-            j = i
-            while j < len(light_sorted) and light_sorted.loc[j, "above_threshold"]:
-                j += 1
-
-            # Shade from period_start to the last timestamp in this period
-            if j > i:
-                period_end = light_sorted.loc[j - 1, "Timestamp"]
-                ax.axvspan(
-                    period_start, period_end, alpha=0.15, color="orange", zorder=0
-                )
-
-            i = j
-        else:
-            i += 1
 
 
 def configure_time_axis(ax, mdates_module) -> None:
@@ -637,12 +760,11 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         else:
             ax2.set_xlabel("Date Time")
 
-        # Add shading for periods when room lights are off (based on light sensor)
-        if not light_df.empty:
-            add_night_shading(ax1, light_df, lab_id, sublab_id)
-            add_night_shading(ax2, light_df, lab_id, sublab_id)
-            add_fumehood_light_shading(ax1, light_df, lab_id, sublab_id)
-            add_fumehood_light_shading(ax2, light_df, lab_id, sublab_id)
+        # Sash chart shading: good use (green), unattended open (red), hood light on (orange)
+        add_sash_usage_shading(ax1, distance_df, light_df, lab_id, sublab_id)
+
+        # Light chart shading: presence (green), non-presence (grey), no-data (white background)
+        add_light_intensity_presence_shading(ax2, light_df, lab_id, sublab_id)
 
         if ax3 is not None:
             ax1.tick_params(axis="x", which="both", labelbottom=False)
@@ -723,6 +845,8 @@ def create_html_dashboard(
             "</html>",
         ]
     else:
+        lab_sublab_combinations = pd.DataFrame(columns=["LabId", "SubLabId"])
+
         # Filter to last 7 days
         last_week = datetime.now() - timedelta(days=7)
         df = df[df["Timestamp"] >= last_week]  # type: ignore[assignment]
@@ -774,36 +898,21 @@ def create_html_dashboard(
             latest_airflow = None
             latest_time = lab_df.iloc[0]["Timestamp"]  # Use latest time from all data
 
-            if not valid_distance_df.empty:
-                latest_distance = valid_distance_df.iloc[0]["Distance"]
-            else:
-                latest_distance = lab_df.iloc[0]["Distance"]
-
-            if not valid_light_df.empty:
-                latest_light = valid_light_df.iloc[0]["Light"]
-            else:
-                latest_light = lab_df.iloc[0]["Light"]
+            latest_distance = latest_value_with_fallback(
+                valid_distance_df, lab_df, "Distance"
+            )
+            latest_light = latest_value_with_fallback(valid_light_df, lab_df, "Light")
 
             latest_airflow = lab_df.iloc[0]["Airflow"]
 
             # Calculate statistics separately for each sensor from valid data only
-            if valid_distance_df.empty:
-                avg_distance = lab_df["Distance"].mean()
-                max_distance = lab_df["Distance"].max()
-                min_distance = lab_df["Distance"].min()
-            else:
-                avg_distance = valid_distance_df["Distance"].mean()
-                max_distance = valid_distance_df["Distance"].max()
-                min_distance = valid_distance_df["Distance"].min()
+            avg_distance, _, _ = get_column_stats_with_fallback(
+                valid_distance_df, lab_df, "Distance"
+            )
 
-            if valid_light_df.empty:
-                avg_light = lab_df["Light"].mean()
-                max_light = lab_df["Light"].max()
-                min_light = lab_df["Light"].min()
-            else:
-                avg_light = valid_light_df["Light"].mean()
-                max_light = valid_light_df["Light"].max()
-                min_light = valid_light_df["Light"].min()
+            avg_light, _, _ = get_column_stats_with_fallback(
+                valid_light_df, lab_df, "Light"
+            )
 
             # Calculate sash opening metrics if calibration data available
             has_calibration = (lab_id, sublab_id) in FUMEHOOD_CALIBRATION
@@ -811,6 +920,7 @@ def create_html_dashboard(
             hours_per_day_sash_open = None
             avg_sash_percent = None
             latest_sash_percent = None
+            valid_sash_df = pd.DataFrame()
 
             if has_calibration:
                 # Calculate sash opening for all valid distance data points
@@ -846,18 +956,19 @@ def create_html_dashboard(
                     )
 
             # Calculate light on metrics if threshold data available
-            has_light_threshold = (lab_id, sublab_id) in LIGHT_THRESHOLDS
-            has_presence_threshold = False
+            light_on_threshold = get_light_threshold(
+                lab_id, sublab_id, "light_on_threshold_lux"
+            )
+            room_light_threshold = get_light_threshold(
+                lab_id, sublab_id, "room_light_on_threshold_lux"
+            )
+            has_light_threshold = light_on_threshold is not None
+            has_presence_threshold = room_light_threshold is not None
             hours_per_week_lab_present = None
             hours_per_day_fumehood_light_on = None
             hours_per_day_fumehood_open_room_lights_off = None
 
             if has_light_threshold:
-                has_presence_threshold = (
-                    "room_light_on_threshold_lux"
-                    in LIGHT_THRESHOLDS[(lab_id, sublab_id)]
-                )
-
                 if has_presence_threshold:
                     presence_df = get_room_light_presence_data(
                         valid_light_df, lab_id, sublab_id
@@ -871,10 +982,7 @@ def create_html_dashboard(
                         hours_per_week_lab_present = 0
 
                 # Calculate hours per day fumehood light was on
-                light_on_readings = (
-                    valid_light_df["Light"]
-                    > LIGHT_THRESHOLDS[(lab_id, sublab_id)]["light_on_threshold_lux"]
-                ).sum()
+                light_on_readings = (valid_light_df["Light"] > light_on_threshold).sum()
                 total_light_readings = len(valid_light_df)
                 percent_time_light_on = (
                     (light_on_readings / total_light_readings * 100)
@@ -887,10 +995,8 @@ def create_html_dashboard(
                 # Calculate hours per day fumehood is open AND room lights are off
                 if (
                     has_calibration
-                    and "valid_sash_df" in locals()
                     and not valid_sash_df.empty
-                    and "room_light_on_threshold_lux"
-                    in LIGHT_THRESHOLDS[(lab_id, sublab_id)]
+                    and room_light_threshold is not None
                 ):
                     # Merge sash data with light data
                     merged_df = valid_sash_df.copy()
@@ -898,12 +1004,7 @@ def create_html_dashboard(
                     # Fumehood open (sash > threshold) AND room lights off
                     fumehood_open_room_off_readings = (
                         (merged_df["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT)
-                        & (
-                            merged_df["Light"]
-                            <= LIGHT_THRESHOLDS[(lab_id, sublab_id)][
-                                "room_light_on_threshold_lux"
-                            ]
-                        )
+                        & (merged_df["Light"] <= room_light_threshold)
                     ).sum()
 
                     total_merged_readings = len(merged_df)
@@ -944,106 +1045,86 @@ def create_html_dashboard(
             ]
 
             # Add stat cards based on calibration availability
-            if has_calibration and avg_sash_percent is not None:
+            if (
+                has_calibration
+                and avg_sash_percent is not None
+                and hours_per_day_sash_open is not None
+            ):
                 if has_presence_threshold and hours_per_week_lab_present is not None:
-                    html_lines += [
-                        '        <div class="stat-card light">',
-                        "          <h3>Lab Presence</h3>",
-                        f'          <div class="value">{hours_per_week_lab_present:.1f}</div>',
-                        '          <div class="unit">hrs/week</div>',
-                        "        </div>",
-                    ]
+                    append_stat_card(
+                        html_lines,
+                        "Lab Presence",
+                        hours_per_week_lab_present,
+                        "hrs/week",
+                        "light",
+                    )
 
-                html_lines += [
-                    '        <div class="stat-card distance">',
-                    "          <h3>Avg Sash Opening</h3>",
-                    f'          <div class="value">{avg_sash_percent:.1f}</div>',
-                    '          <div class="unit">%</div>',
-                    "        </div>",
-                    '        <div class="stat-card light">',
-                    "          <h3>Sash Open</h3>",
-                    f'          <div class="value">{hours_per_day_sash_open:.1f}</div>',
-                    '          <div class="unit">hrs/day</div>',
-                    "        </div>",
-                ]
+                append_stat_card(
+                    html_lines,
+                    "Avg Sash Opening",
+                    avg_sash_percent,
+                    "%",
+                    "distance",
+                )
+                append_stat_card(
+                    html_lines,
+                    "Sash Open",
+                    hours_per_day_sash_open,
+                    "hrs/day",
+                    "light",
+                )
 
-                # Add light on metrics if available
-                if has_light_threshold and hours_per_day_fumehood_light_on is not None:
-                    html_lines += [
-                        '        <div class="stat-card light">',
-                        "          <h3>Fumehood Light On</h3>",
-                        f'          <div class="value">{hours_per_day_fumehood_light_on:.1f}</div>',
-                        '          <div class="unit">hrs/day</div>',
-                        "        </div>",
-                    ]
-
-                # Add fumehood open + room lights off metric if available
-                if hours_per_day_fumehood_open_room_lights_off is not None:
-                    html_lines += [
-                        '        <div class="stat-card light">',
-                        "          <h3>Unattended Hood Open</h3>",
-                        f'          <div class="value">{hours_per_day_fumehood_open_room_lights_off:.1f}</div>',
-                        '          <div class="unit">hrs/day</div>',
-                        "        </div>",
-                    ]
+                append_optional_usage_cards(
+                    html_lines,
+                    hours_per_day_fumehood_light_on,
+                    hours_per_day_fumehood_open_room_lights_off,
+                )
             else:
-                html_lines += [
-                    '        <div class="stat-card distance">',
-                    "          <h3>Current Distance</h3>",
-                    f'          <div class="value">{latest_distance:.1f}</div>',
-                    '          <div class="unit">mm</div>',
-                    "        </div>",
-                    '        <div class="stat-card distance">',
-                    "          <h3>Avg Distance</h3>",
-                    f'          <div class="value">{avg_distance:.1f}</div>',
-                    '          <div class="unit">mm</div>',
-                    "        </div>",
-                ]
+                append_stat_card(
+                    html_lines,
+                    "Current Distance",
+                    latest_distance,
+                    "mm",
+                    "distance",
+                )
+                append_stat_card(
+                    html_lines,
+                    "Avg Distance",
+                    avg_distance,
+                    "mm",
+                    "distance",
+                )
 
                 if has_presence_threshold and hours_per_week_lab_present is not None:
-                    html_lines += [
-                        '        <div class="stat-card light">',
-                        "          <h3>Lab Presence</h3>",
-                        f'          <div class="value">{hours_per_week_lab_present:.1f}</div>',
-                        '          <div class="unit">hrs/week</div>',
-                        "        </div>",
-                    ]
+                    append_stat_card(
+                        html_lines,
+                        "Lab Presence",
+                        hours_per_week_lab_present,
+                        "hrs/week",
+                        "light",
+                    )
                 else:
-                    html_lines += [
-                        '        <div class="stat-card light">',
-                        "          <h3>Current Light</h3>",
-                        f'          <div class="value">{latest_light:.1f}</div>',
-                        '          <div class="unit">lux</div>',
-                        "        </div>",
-                    ]
+                    append_stat_card(
+                        html_lines,
+                        "Current Light",
+                        latest_light,
+                        "lux",
+                        "light",
+                    )
 
-                html_lines += [
-                    '        <div class="stat-card light">',
-                    "          <h3>Avg Light</h3>",
-                    f'          <div class="value">{avg_light:.1f}</div>',
-                    '          <div class="unit">lux</div>',
-                    "        </div>",
-                ]
+                append_stat_card(
+                    html_lines,
+                    "Avg Light",
+                    avg_light,
+                    "lux",
+                    "light",
+                )
 
-                # Add light on metrics if available
-                if has_light_threshold and hours_per_day_fumehood_light_on is not None:
-                    html_lines += [
-                        '        <div class="stat-card light">',
-                        "          <h3>Fumehood Light On</h3>",
-                        f'          <div class="value">{hours_per_day_fumehood_light_on:.1f}</div>',
-                        '          <div class="unit">hrs/day</div>',
-                        "        </div>",
-                    ]
-
-                # Add fumehood open + room lights off metric if available
-                if hours_per_day_fumehood_open_room_lights_off is not None:
-                    html_lines += [
-                        '        <div class="stat-card light">',
-                        "          <h3>Unattended Hood Open</h3>",
-                        f'          <div class="value">{hours_per_day_fumehood_open_room_lights_off:.1f}</div>',
-                        '          <div class="unit">hrs/day</div>',
-                        "        </div>",
-                    ]
+                append_optional_usage_cards(
+                    html_lines,
+                    hours_per_day_fumehood_light_on,
+                    hours_per_day_fumehood_open_room_lights_off,
+                )
 
             html_lines.append("      </div>")
 
