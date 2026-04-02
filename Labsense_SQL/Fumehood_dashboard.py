@@ -40,7 +40,7 @@ CONNECTION_STRING = (
 LAB_NAMES = {1: "Lab -1.025", 2: "Lab -1.041"}
 
 # Sash opening threshold percentage (for determining "open" state)
-SASH_OPEN_THRESHOLD_PERCENT = 2.0
+SASH_OPEN_THRESHOLD_PERCENT = 5.0
 
 # Fumehood calibration data: {(lab_id, sublab_id): {"fully_closed_mm": mm, "fully_open_mm": mm}}
 # Distance values for sash fully closed (0% open) and fully open (100% open)
@@ -414,16 +414,15 @@ def fetch_fumehood_data(connection_string: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def add_sash_usage_shading(
-    ax,
+def _build_sash_usage_state(
     distance_df: pd.DataFrame,
     light_df: pd.DataFrame,
     lab_id: int,
     sublab_id: int,
-) -> None:
-    """Shade sash chart: good use (green), unattended open (red), and hood light on (orange)."""
+) -> pd.DataFrame:
+    """Build a shared sash/light state table used by shading and usage metrics."""
     if distance_df.empty:
-        return
+        return pd.DataFrame()
 
     distance_sorted = distance_df.sort_values("Timestamp").reset_index(drop=True).copy()
 
@@ -438,7 +437,6 @@ def add_sash_usage_shading(
     else:
         sash_state_df["SashOpen"] = False
 
-    # Build a shared timeline so shading does not disappear when sensor cadences differ.
     timeline_parts = [distance_sorted[["Timestamp"]]]
     if not light_df.empty:
         timeline_parts.append(light_df[["Timestamp"]])
@@ -450,9 +448,8 @@ def add_sash_usage_shading(
         .sort_values("Timestamp")
         .reset_index(drop=True)
     )
-
     if timeline_df.empty:
-        return
+        return pd.DataFrame()
 
     working = pd.merge_asof(
         timeline_df,
@@ -488,6 +485,20 @@ def add_sash_usage_shading(
 
     working["GoodUse"] = working["SashOpen"] & (working["Presence"] == 1)
     working["BadUse"] = working["SashOpen"] & (working["Presence"] == 0)
+    return working
+
+
+def add_sash_usage_shading(
+    ax,
+    distance_df: pd.DataFrame,
+    light_df: pd.DataFrame,
+    lab_id: int,
+    sublab_id: int,
+) -> None:
+    """Shade sash chart: good use (green), unattended open (red), and hood light on (orange)."""
+    working = _build_sash_usage_state(distance_df, light_df, lab_id, sublab_id)
+    if working.empty:
+        return
 
     # Layering: good use first, hood light next, unattended open on top.
     _shade_boolean_intervals(
@@ -1029,19 +1040,16 @@ def create_html_dashboard(
                 # Calculate hours per day fumehood is open AND room lights are off
                 if (
                     has_calibration
-                    and not valid_sash_df.empty
+                    and not valid_distance_df.empty
                     and room_light_threshold is not None
                 ):
-                    # Merge sash data with light data
-                    merged_df = valid_sash_df.copy()
+                    usage_state_df = _build_sash_usage_state(
+                        valid_distance_df, valid_light_df, lab_id, sublab_id
+                    )
 
-                    # Fumehood open (sash > threshold) AND room lights off
-                    fumehood_open_room_off_readings = (
-                        (merged_df["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT)
-                        & (merged_df["Light"] <= room_light_threshold)
-                    ).sum()
-
-                    total_merged_readings = len(merged_df)
+                    # Use the exact same BadUse definition as sash red shading.
+                    fumehood_open_room_off_readings = usage_state_df["BadUse"].sum()
+                    total_merged_readings = len(usage_state_df)
                     percent_time_open_room_off = (
                         (fumehood_open_room_off_readings / total_merged_readings * 100)
                         if total_merged_readings > 0
