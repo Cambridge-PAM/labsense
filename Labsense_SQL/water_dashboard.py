@@ -19,7 +19,7 @@ load_dotenv(env_path)
 import pyodbc
 import pandas as pd
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, Dict, Tuple
 
 # SQL Server connection details
@@ -48,10 +48,15 @@ SINK_NAMES = {
 }
 
 # Analysis window and validation constants
-ANALYSIS_WINDOW_DAYS = 30
+ANALYSIS_WINDOW_MONTHS = 2
 INVALID_WATER_READING_L = 0.003
 WATER_VALIDATION_TOLERANCE = 5e-4
 OLYMPIC_POOL_VOLUME_L = 2_500_000
+
+
+def get_analysis_start() -> pd.Timestamp:
+    """Return the start timestamp for the analysis window (last N months)."""
+    return pd.Timestamp(datetime.now()) - pd.DateOffset(months=ANALYSIS_WINDOW_MONTHS)
 
 
 def get_lab_display_name(lab_id: int) -> str:
@@ -125,12 +130,12 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
     if df.empty:
         return plot_files
 
-    # Filter to last month (30 days)
-    analysis_start = datetime.now() - timedelta(days=ANALYSIS_WINDOW_DAYS)
+    # Filter to last two months
+    analysis_start = get_analysis_start()
     df = df[df["Timestamp"] >= analysis_start]  # type: ignore[assignment]
 
     if df.empty:
-        print(f"No data found in the last {ANALYSIS_WINDOW_DAYS} days")
+        print(f"No data found in the last {ANALYSIS_WINDOW_MONTHS} months")
         return plot_files
 
     # Get unique lab/sublab combinations
@@ -159,30 +164,33 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if plot_df.empty:
             continue
 
-        # Aggregate data into daily intervals
+        # Aggregate data into weekly intervals
         plot_df = (
-            plot_df.set_index("Timestamp").resample("D")["Water"].sum().reset_index()
+            plot_df.set_index("Timestamp")
+            .resample("W-MON", label="left", closed="left")["Water"]
+            .sum()
+            .reset_index()
         )
 
         # Create figure with water consumption plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Plot Water Consumption as bars (daily)
+        # Plot Water Consumption as bars (weekly)
         ax.bar(
             plot_df["Timestamp"],
             plot_df["Water"],
             color="#3498db",
-            width=0.8,  # Daily bar width
+            width=5.5,  # Weekly bar width (in days)
             edgecolor="#2980b9",
             linewidth=1.2,
         )
         ax.set_xlabel("Date")
-        ax.set_ylabel("Daily Water Consumption (L)")
+        ax.set_ylabel("Weekly Water Consumption (L)")
         ax.set_title(
-            f"{get_display_label(lab_id, sublab_id)}: Daily Water Consumption ({water_errors} errors excluded)"
+            f"{get_display_label(lab_id, sublab_id)}: Weekly Water Consumption ({water_errors} errors excluded)"
         )
         ax.grid(True, alpha=0.3, axis="y")
-        ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+        ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=0, interval=1))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
         ax.tick_params(axis="x", labelsize=8)
 
@@ -261,13 +269,13 @@ def create_html_dashboard(
         all_df = df.copy()
         year_start = datetime(datetime.now().year, 1, 1)
 
-        # Filter to last month (30 days)
-        analysis_start = datetime.now() - timedelta(days=ANALYSIS_WINDOW_DAYS)
+        # Filter to last two months
+        analysis_start = get_analysis_start()
         df = df[df["Timestamp"] >= analysis_start]  # type: ignore[assignment]
 
         if df.empty:
             html_lines += [
-                f"    <p>No data found in the last {ANALYSIS_WINDOW_DAYS} days.</p>",
+                f"    <p>No data found in the last {ANALYSIS_WINDOW_MONTHS} months.</p>",
                 "  </div>",
                 "</body>",
                 "</html>",
@@ -345,9 +353,13 @@ def create_html_dashboard(
 
                 olympic_pool_equivalent = total_water_year / OLYMPIC_POOL_VOLUME_L
 
-                # Calculate daily average for the analysis window
-                days_of_data = ANALYSIS_WINDOW_DAYS
-                daily_avg = total_water / days_of_data if days_of_data > 0 else 0
+                # Calculate weekly average for the analysis window
+                weekly_totals = (
+                    valid_df.set_index("Timestamp")
+                    .resample("W-MON", label="left", closed="left")["Water"]
+                    .sum()
+                )
+                weekly_avg = weekly_totals.mean() if not weekly_totals.empty else 0
 
                 html_lines += [
                     '    <div class="lab-section">',
@@ -359,7 +371,7 @@ def create_html_dashboard(
                     "      </div>",
                     '      <div class="stats-grid">',
                     '        <div class="stat-card consumption">',
-                    f"          <h3>Total ({ANALYSIS_WINDOW_DAYS} days)</h3>",
+                    f"          <h3>Total (Last {ANALYSIS_WINDOW_MONTHS} Months)</h3>",
                     f'          <div class="value">{total_water:.1f}</div>',
                     '          <div class="unit">L</div>',
                     "        </div>",
@@ -374,9 +386,9 @@ def create_html_dashboard(
                     '          <div class="unit">pools (YTD)</div>',
                     "        </div>",
                     '        <div class="stat-card water">',
-                    "          <h3>Daily Average</h3>",
-                    f'          <div class="value">{daily_avg:.1f}</div>',
-                    '          <div class="unit">L/day</div>',
+                    "          <h3>Weekly Average</h3>",
+                    f'          <div class="value">{weekly_avg:.1f}</div>',
+                    '          <div class="unit">L/week</div>',
                     "        </div>",
                     '        <div class="stat-card consumption">',
                     "          <h3>Peak Reading</h3>",
