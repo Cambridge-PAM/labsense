@@ -425,41 +425,64 @@ def add_sash_usage_shading(
     if distance_df.empty:
         return
 
-    working = distance_df.sort_values("Timestamp").reset_index(drop=True).copy()
+    distance_sorted = distance_df.sort_values("Timestamp").reset_index(drop=True).copy()
+
+    sash_state_df = distance_sorted[["Timestamp", "Distance"]].copy()
     if (lab_id, sublab_id) in FUMEHOOD_CALIBRATION:
-        working["SashPercentOpen"] = working["Distance"].apply(
+        sash_state_df["SashPercentOpen"] = sash_state_df["Distance"].apply(
             lambda d: calculate_sash_percentage_open(d, lab_id, sublab_id)
         )
-        working["SashOpen"] = (
-            working["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT
-        ) & working["SashPercentOpen"].notna()
+        sash_state_df["SashOpen"] = (
+            sash_state_df["SashPercentOpen"] > SASH_OPEN_THRESHOLD_PERCENT
+        ) & sash_state_df["SashPercentOpen"].notna()
     else:
-        working["SashOpen"] = False
+        sash_state_df["SashOpen"] = False
+
+    # Build a shared timeline so shading does not disappear when sensor cadences differ.
+    timeline_parts = [distance_sorted[["Timestamp"]]]
+    if not light_df.empty:
+        timeline_parts.append(light_df[["Timestamp"]])
+
+    timeline_df = (
+        pd.concat(timeline_parts, ignore_index=True)
+        .dropna(subset=["Timestamp"])
+        .drop_duplicates()
+        .sort_values("Timestamp")
+        .reset_index(drop=True)
+    )
+
+    if timeline_df.empty:
+        return
+
+    working = pd.merge_asof(
+        timeline_df,
+        sash_state_df[["Timestamp", "SashOpen"]].sort_values("Timestamp"),
+        on="Timestamp",
+        direction="backward",
+    )
+    working["SashOpen"] = working["SashOpen"].fillna(False).astype(bool)
 
     presence_df = get_room_light_presence_data(light_df, lab_id, sublab_id)
     if presence_df is not None and not presence_df.empty:
-        presence_lookup = (
-            presence_df[["Timestamp", "Presence"]]
-            .set_index("Timestamp")
-            .sort_index()["Presence"]
+        working = pd.merge_asof(
+            working.sort_values("Timestamp"),
+            presence_df[["Timestamp", "Presence"]].sort_values(by="Timestamp"),
+            on="Timestamp",
+            direction="backward",
         )
-        aligned_presence = presence_lookup.reindex(
-            working["Timestamp"], method="nearest"
-        )
-        working["Presence"] = aligned_presence.fillna(0).astype(int)
+        working["Presence"] = working["Presence"].fillna(0).astype(int)
     else:
         working["Presence"] = 0
 
     light_threshold = get_light_threshold(lab_id, sublab_id, "light_on_threshold_lux")
     if light_threshold is not None and not light_df.empty:
-        light_lookup = (
-            light_df[["Timestamp", "Light"]]
-            .set_index("Timestamp")
-            .sort_index()["Light"]
+        working = pd.merge_asof(
+            working.sort_values("Timestamp"),
+            light_df[["Timestamp", "Light"]].sort_values(by="Timestamp"),
+            on="Timestamp",
+            direction="backward",
         )
-        aligned_light = light_lookup.reindex(working["Timestamp"], method="nearest")
-        working["FumehoodLightOn"] = aligned_light > light_threshold
-        working["FumehoodLightOn"] = working["FumehoodLightOn"].fillna(False)
+        working["FumehoodLightOn"] = (working["Light"] > light_threshold).fillna(False)
     else:
         working["FumehoodLightOn"] = False
 
@@ -491,7 +514,7 @@ def add_light_intensity_presence_shading(
     working["PresenceOff"] = working["Presence"] == 0
 
     _shade_boolean_intervals(
-        ax, working, "PresenceOff", color="#95a5a6", alpha=0.30, zorder=1
+        ax, working, "PresenceOff", color="#e74c3c", alpha=0.30, zorder=1
     )
     _shade_boolean_intervals(
         ax, working, "PresenceOn", color="#2ecc71", alpha=0.24, zorder=2
