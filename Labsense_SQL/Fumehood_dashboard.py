@@ -56,10 +56,14 @@ LIGHT_THRESHOLDS = {
     (1, 3): {"light_on_threshold_lux": 80, "room_light_on_threshold_lux": 18},
 }
 
-# Excluded distance values: {(lab_id, sublab_id): [mm_value, ...]}
-# Distance values listed here will be excluded from error detection
+# Excluded distance values: {(lab_id, sublab_id): [{"min": mm, "max": mm}, ...]}
+# Distance values within these ranges will be excluded from error detection
 EXCLUDED_DISTANCE_VALUES = {
-    (1, 3): [],
+    (1, 3): [
+        {"min": 549, "max": 556},  # Main cluster around 550-555mm
+        {"min": 273, "max": 277},  # Secondary cluster around 274-276mm
+        {"min": 370, "max": 373},  # Tertiary cluster around 371-372mm
+    ],
 }
 
 
@@ -298,7 +302,7 @@ def identify_distance_errors(df: pd.DataFrame) -> pd.Series:
     Distance readings are errors if:
     - The value is negative, OR
     - The value is within the next 4 readings after a negative value
-    - The value is in the exclusion list for that lab/sublab (if configured)
+    - The value falls within an excluded range for that lab/sublab (if configured)
 
     Args:
         df: DataFrame with Distance column, sorted by Timestamp. Must contain LabId and SubLabId columns.
@@ -312,18 +316,25 @@ def identify_distance_errors(df: pd.DataFrame) -> pd.Series:
     is_error = pd.Series([False] * len(df), index=df.index)
     distances = df["Distance"].values
 
-    # Get excluded distance values for this lab/sublab if available
-    excluded_distances = []
+    # Get excluded distance ranges for this lab/sublab if available
+    excluded_ranges = []
     if "LabId" in df.columns and "SubLabId" in df.columns:
         # Get the first lab_id and sublab_id (should be consistent in filtered df)
         lab_id = df["LabId"].iloc[0]
         sublab_id = df["SubLabId"].iloc[0]
-        excluded_distances = EXCLUDED_DISTANCE_VALUES.get((lab_id, sublab_id), [])
+        excluded_ranges = EXCLUDED_DISTANCE_VALUES.get((lab_id, sublab_id), [])
+
+    def is_in_excluded_range(distance: float) -> bool:
+        """Check if distance falls within any excluded range."""
+        for excluded_range in excluded_ranges:
+            if excluded_range["min"] <= distance <= excluded_range["max"]:
+                return True
+        return False
 
     # Iterate through all readings
     for i in range(len(distances)):
-        # Check if value is in exclusion list
-        if distances[i] in excluded_distances:
+        # Check if value is in excluded range
+        if is_in_excluded_range(distances[i]):
             is_error.iloc[i] = True
         # If we find a negative value
         elif distances[i] < 0:
@@ -556,19 +567,23 @@ def print_bad_behavior_distances(
 
     # Print header
     display_label = get_display_label(lab_id, sublab_id)
-    print(f"\n{'='*80}")
+    print(f"\n{'='*100}")
     print(f"Bad Behaviour Readings: {display_label}")
-    print(f"{'='*80}")
-    print(f"{'Timestamp':<25} {'Distance (mm)':<15}")
-    print(f"{'-'*40}")
+    print(f"{'='*100}")
+    print(f"{'Timestamp':<25} {'Distance (mm)':<18} {'Sash % Open':<15}")
+    print(f"{'-'*58}")
 
     # Print each bad behavior reading
     for _, row in bad_with_distance.iterrows():
         timestamp_str = row["Timestamp"].strftime("%Y-%m-%d %H:%M:%S")
         distance_value = f"{row['Distance']:.2f}"
-        print(f"{timestamp_str:<25} {distance_value:<15}")
+        sash_percent = calculate_sash_percentage_open(
+            row["Distance"], lab_id, sublab_id
+        )
+        sash_percent_str = f"{sash_percent:.1f}%" if sash_percent is not None else "N/A"
+        print(f"{timestamp_str:<25} {distance_value:<18} {sash_percent_str:<15}")
 
-    print(f"{'-'*40}\n")
+    print(f"{'-'*58}\n")
 
 
 def add_sash_usage_shading(
