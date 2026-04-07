@@ -4,9 +4,16 @@ Queries the labsense SQL Server database for fumehood sensor data (distance and 
 grouped by laboratory and sublaboratory, and creates visualizations and an HTML dashboard.
 """
 
-import sys
+import argparse
 import os
+import sys
+from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
+from typing import Dict, Optional, Tuple
+
+import pandas as pd
+import pyodbc
 from dotenv import load_dotenv
 
 # Add repository root to sys.path to allow absolute imports when running this file directly
@@ -15,12 +22,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # Load environment variables from .env file at repo root
 env_path = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(env_path)
-
-import pyodbc
-import pandas as pd
-import argparse
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Tuple
 
 # SQL Server connection details
 SQL_SERVER_NAME = "MSM-FPM-70203\\LABSENSE"
@@ -52,7 +53,13 @@ FUMEHOOD_CALIBRATION = {
 # Light level above light_on_threshold indicates the fumehood light is on
 # Light level above room_light_on_threshold indicates the room lights are on
 LIGHT_THRESHOLDS = {
-    (1, 3): {"light_on_threshold_lux": 80, "room_light_on_threshold_lux": 15},
+    (1, 3): {"light_on_threshold_lux": 80, "room_light_on_threshold_lux": 18},
+}
+
+# Excluded distance values: {(lab_id, sublab_id): [mm_value, ...]}
+# Distance values listed here will be excluded from error detection
+EXCLUDED_DISTANCE_VALUES = {
+    (1, 3): [],
 }
 
 
@@ -291,9 +298,10 @@ def identify_distance_errors(df: pd.DataFrame) -> pd.Series:
     Distance readings are errors if:
     - The value is negative, OR
     - The value is within the next 4 readings after a negative value
+    - The value is in the exclusion list for that lab/sublab (if configured)
 
     Args:
-        df: DataFrame with Distance column, sorted by Timestamp
+        df: DataFrame with Distance column, sorted by Timestamp. Must contain LabId and SubLabId columns.
 
     Returns:
         Boolean Series indicating which rows are errors (True = error)
@@ -304,10 +312,21 @@ def identify_distance_errors(df: pd.DataFrame) -> pd.Series:
     is_error = pd.Series([False] * len(df), index=df.index)
     distances = df["Distance"].values
 
+    # Get excluded distance values for this lab/sublab if available
+    excluded_distances = []
+    if "LabId" in df.columns and "SubLabId" in df.columns:
+        # Get the first lab_id and sublab_id (should be consistent in filtered df)
+        lab_id = df["LabId"].iloc[0]
+        sublab_id = df["SubLabId"].iloc[0]
+        excluded_distances = EXCLUDED_DISTANCE_VALUES.get((lab_id, sublab_id), [])
+
     # Iterate through all readings
     for i in range(len(distances)):
+        # Check if value is in exclusion list
+        if distances[i] in excluded_distances:
+            is_error.iloc[i] = True
         # If we find a negative value
-        if distances[i] < 0:
+        elif distances[i] < 0:
             # Mark the negative value as error
             is_error.iloc[i] = True
             # Mark the next 4 consecutive values as errors
@@ -461,9 +480,10 @@ def _build_sash_usage_state(
 
     presence_df = get_room_light_presence_data(light_df, lab_id, sublab_id)
     if presence_df is not None and not presence_df.empty:
+        presence_subset = presence_df[["Timestamp", "Presence"]]
         working = pd.merge_asof(
             working.sort_values("Timestamp"),
-            presence_df[["Timestamp", "Presence"]].sort_values(by="Timestamp"),
+            presence_subset.sort_values(by="Timestamp"),  # type: ignore[call-overload]
             on="Timestamp",
             direction="backward",
         )
@@ -473,9 +493,10 @@ def _build_sash_usage_state(
 
     light_threshold = get_light_threshold(lab_id, sublab_id, "light_on_threshold_lux")
     if light_threshold is not None and not light_df.empty:
+        light_subset = light_df[["Timestamp", "Light"]]
         working = pd.merge_asof(
             working.sort_values("Timestamp"),
-            light_df[["Timestamp", "Light"]].sort_values(by="Timestamp"),
+            light_subset.sort_values(by="Timestamp"),  # type: ignore[call-overload]
             on="Timestamp",
             direction="backward",
         )
@@ -489,6 +510,65 @@ def _build_sash_usage_state(
     )
     working["BadUse"] = working["SashOpen"] & (working["Presence"] == 0)
     return working
+
+
+def print_bad_behavior_distances(
+    distance_df: pd.DataFrame,
+    light_df: pd.DataFrame,
+    lab_id: int,
+    sublab_id: int,
+) -> None:
+    """Print fumehood distances classified as bad behavior with timestamps.
+
+    Bad behavior is defined as sash open while room presence is off.
+
+    Args:
+        distance_df: DataFrame with distance readings (Distance, Timestamp columns)
+        light_df: DataFrame with light readings (Light, Timestamp columns)
+        lab_id: Laboratory ID
+        sublab_id: Sublaboratory/Fumehood ID
+    """
+    if distance_df.empty or light_df.empty:
+        return
+
+    # Build usage state to identify bad behavior
+    working = _build_sash_usage_state(distance_df, light_df, lab_id, sublab_id)
+    if working.empty or not working["BadUse"].any():
+        return
+
+    # Extract bad behavior rows with distance data
+    bad_behavior_mask = working["BadUse"]
+    bad_behavior_rows = working[bad_behavior_mask].copy()
+
+    if bad_behavior_rows.empty:
+        return
+
+    # Merge with distance data to get Distance values
+    bad_with_distance = bad_behavior_rows.merge(
+        distance_df[["Timestamp", "Distance"]],
+        on="Timestamp",
+        how="left",
+    )
+    bad_with_distance = bad_with_distance.dropna(subset=["Distance"])
+
+    if bad_with_distance.empty:
+        return
+
+    # Print header
+    display_label = get_display_label(lab_id, sublab_id)
+    print(f"\n{'='*80}")
+    print(f"Bad Behaviour Readings: {display_label}")
+    print(f"{'='*80}")
+    print(f"{'Timestamp':<25} {'Distance (mm)':<15}")
+    print(f"{'-'*40}")
+
+    # Print each bad behavior reading
+    for _, row in bad_with_distance.iterrows():
+        timestamp_str = row["Timestamp"].strftime("%Y-%m-%d %H:%M:%S")
+        distance_value = f"{row['Distance']:.2f}"
+        print(f"{timestamp_str:<25} {distance_value:<15}")
+
+    print(f"{'-'*40}\n")
 
 
 def add_sash_usage_shading(
@@ -723,7 +803,9 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         plot_distance_df = distance_df.copy() if not distance_df.empty else None
         if has_calibration and plot_distance_df is not None:
             plot_distance_df["SashPercentOpen"] = plot_distance_df["Distance"].apply(
-                lambda d: calculate_sash_percentage_open(d, lab_id, sublab_id)
+                partial(
+                    calculate_sash_percentage_open, lab_id=lab_id, sublab_id=sublab_id
+                )
             )
             plot_distance_df = plot_distance_df[
                 plot_distance_df["SashPercentOpen"].notna()
@@ -811,6 +893,7 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
 
         # Sash chart shading: good use (green), unattended open (red), hood light on (orange)
         add_sash_usage_shading(ax1, distance_df, light_df, lab_id, sublab_id)
+        print_bad_behavior_distances(distance_df, light_df, lab_id, sublab_id)
         sash_shading_legend = [
             Patch(facecolor="#2ecc71", alpha=0.32, label="Good behaviour"),
             Patch(facecolor="#e74c3c", alpha=0.42, label="Bad behaviour"),
@@ -1008,7 +1091,11 @@ def create_html_dashboard(
                 # Calculate sash opening for all valid distance data points
                 valid_df_copy = valid_distance_df.copy()
                 valid_df_copy["SashPercentOpen"] = valid_df_copy["Distance"].apply(
-                    lambda d: calculate_sash_percentage_open(d, lab_id, sublab_id)
+                    partial(
+                        calculate_sash_percentage_open,
+                        lab_id=lab_id,
+                        sublab_id=sublab_id,
+                    )
                 )
                 valid_sash_df = valid_df_copy[valid_df_copy["SashPercentOpen"].notna()]
 
