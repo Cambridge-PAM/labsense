@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+import argparse
 
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -27,7 +28,6 @@ from Labsense_SQL.gsk_enviro_dict_temp import (
 from Labsense_SQL.constants import to_litre, gsk_2016
 from Labsense_SQL.sql_helpers import maybe_insert
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 import datetime
 import requests as req
@@ -78,6 +78,115 @@ air_green_list = []
 health_red_list = []
 health_yellow_list = []
 health_green_list = []
+
+
+def _build_http_session(max_retries: int) -> req.Session:
+    """Create an HTTP session configured with retries for transient failures."""
+    session = req.Session()
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    retries = Retry(
+        total=max_retries, backoff_factor=0.5, status_forcelist=(500, 502, 503, 504)
+    )
+    session.mount("https://", HTTPAdapter(max_retries=retries))
+    return session
+
+
+def _red_category_map() -> Dict[str, str]:
+    """Return CAS -> category mapping for all red-category GSK lists."""
+    red_lookup: Dict[str, str] = {}
+    for cas in gsk_composite_red.values():
+        red_lookup[cas] = "composite"
+    for cas in gsk_inc_red.values():
+        red_lookup[cas] = "incineration"
+    for cas in gsk_voc_red.values():
+        red_lookup[cas] = "voc"
+    for cas in gsk_aqua_red.values():
+        red_lookup[cas] = "aquatic"
+    for cas in gsk_air_red.values():
+        red_lookup[cas] = "air"
+    for cas in gsk_health_red.values():
+        red_lookup[cas] = "health"
+    return red_lookup
+
+
+def export_red_category_chemicals_csv(
+    output_path: Optional[str] = None,
+    timeout: int = 10,
+    max_retries: int = 3,
+) -> Path:
+    """Export all red-category chemicals and current in-stock volumes to CSV.
+
+    CSV columns:
+        chemical_name, cas_number, category, volume_litres, exported_at
+    """
+    chem_token = os.getenv("CHEMINVENTORY_CONNECTION_STRING")
+    if not chem_token:
+        raise RuntimeError("CHEMINVENTORY_CONNECTION_STRING is required for API access")
+
+    output = (
+        Path(output_path)
+        if output_path
+        else (repo_root / "plots" / "red_category_chemicals.csv")
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    red_lookup = _red_category_map()
+    red_rows = []
+    session = _build_http_session(max_retries=max_retries)
+    exported_at = datetime.datetime.now().isoformat(timespec="seconds")
+
+    for chemical_name, cas_number in gsk_2016.items():
+        category = red_lookup.get(cas_number)
+        if not category:
+            continue
+
+        response = session.post(
+            "https://app.cheminventory.net/api/search/execute",
+            json={
+                "authtoken": chem_token,
+                "inventory": 873,
+                "type": "cas",
+                "contents": cas_number,
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+
+        ci_json_raw = response.json()
+        if isinstance(ci_json_raw, str):
+            ci_json_raw = json.loads(ci_json_raw)
+
+        ci_json_data = pd.json_normalize(
+            ci_json_raw.get("data", {}).get("containers", [])
+        )
+        ci_df = pd.DataFrame(ci_json_data)
+        if ci_df.empty:
+            total_litres = 0.0
+        else:
+            ci_df_real = ci_df.loc[ci_df["location"] != 527895]
+            if ci_df_real.empty:
+                total_litres = 0.0
+            else:
+                size = list(ci_df_real.get("size", []))
+                unit = list(ci_df_real.get("unit", []))
+                total_litres, _ = sizes_to_litres(size, unit)
+
+        red_rows.append(
+            {
+                "chemical_name": chemical_name,
+                "cas_number": cas_number,
+                "category": category,
+                "volume_litres": round(float(total_litres), 6),
+                "exported_at": exported_at,
+            }
+        )
+
+    pd.DataFrame(red_rows).sort_values(by=["category", "chemical_name"]).to_csv(
+        output, index=False
+    )
+    return output
 
 
 def sizes_to_litres(size_list: List[Any], unit_list: List[Any]) -> Tuple[float, int]:
@@ -153,14 +262,7 @@ def main(
         )
 
     # Setup requests session with retries
-    session = req.Session()
-    from requests.adapters import HTTPAdapter
-    from urllib3.util.retry import Retry
-
-    retries = Retry(
-        total=max_retries, backoff_factor=0.5, status_forcelist=(500, 502, 503, 504)
-    )
-    session.mount("https://", HTTPAdapter(max_retries=retries))
+    session = _build_http_session(max_retries=max_retries)
 
     # local accumulators
     composite_red_list_local: List[float] = []
@@ -355,4 +457,23 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Run ChemInventory SQL sync or export red-category chemical volumes"
+    )
+    parser.add_argument(
+        "--export-red-csv",
+        action="store_true",
+        help="Export red-category chemicals and their volumes to CSV",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Optional output CSV path (default: plots/red_category_chemicals.csv)",
+    )
+    args = parser.parse_args()
+
+    if args.export_red_csv:
+        export_path = export_red_category_chemicals_csv(output_path=args.output)
+        print(f"Exported red-category chemicals to: {export_path}")
+    else:
+        main()
