@@ -60,8 +60,8 @@ LIGHT_THRESHOLDS = {
 # Distance values within these ranges will be excluded from error detection
 EXCLUDED_DISTANCE_VALUES = {
     (1, 3): [
-        {"min": 549, "max": 556},  # Main cluster around 550-555mm
-        {"min": 273, "max": 277},  # Secondary cluster around 274-276mm
+        {"min": 542, "max": 573},  # Main cluster around 546-573mm
+        {"min": 271, "max": 277},  # Secondary cluster around 274-276mm
         {"min": 370, "max": 373},  # Tertiary cluster around 371-372mm
     ],
 }
