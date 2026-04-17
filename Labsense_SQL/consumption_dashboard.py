@@ -345,6 +345,76 @@ def create_plots(
         plot_files["granular"] = granular_plot.name
         print(f"Created plot: {granular_plot}")
 
+        today_midnight = datetime.now().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        previous_day_start = today_midnight - timedelta(days=1)
+        previous_day_end = today_midnight
+        previous_day_data = df_gran[
+            (df_gran["Timestamp"] >= previous_day_start)
+            & (df_gran["Timestamp"] < previous_day_end)
+        ].copy()
+        if not previous_day_data.empty:
+            fig, ax = plt.subplots(figsize=(14, 6))
+
+            if CALCULATE_IDLE_POWER and idle_power_kw > 0:
+                ax.plot(
+                    previous_day_data["Timestamp"],
+                    previous_day_data["Power_kW"],
+                    linewidth=0.8,
+                    color="#95a5a6",
+                    alpha=0.5,
+                    label=f"Total Power (inc. {idle_power_kw:.2f} kW idle)",
+                )
+                ax.plot(
+                    previous_day_data["Timestamp"],
+                    previous_day_data["Active_Power_kW"],
+                    linewidth=1.2,
+                    color="#3498db",
+                    label="Active Power",
+                )
+                ax.axhline(
+                    y=idle_power_kw,
+                    color="#e74c3c",
+                    linestyle="--",
+                    linewidth=1.5,
+                    alpha=0.7,
+                    label=f"Idle Power ({idle_power_kw:.2f} kW)",
+                )
+                previous_day_title_suffix = " - Active vs Total"
+            else:
+                ax.plot(
+                    previous_day_data["Timestamp"],
+                    previous_day_data["Power_kW"],
+                    linewidth=1.2,
+                    color="#3498db",
+                    label="Total Power",
+                )
+                previous_day_title_suffix = ""
+
+            ax.set_xlabel("Time", fontsize=12)
+            ax.set_ylabel("Power (kW)", fontsize=12)
+            ax.set_title(
+                f"Minute-Level Power Consumption ({previous_day_start.date()}){previous_day_title_suffix}",
+                fontsize=14,
+                fontweight="bold",
+            )
+            ax.grid(True, alpha=0.3)
+            ax.legend(loc="upper right")
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+            plt.xticks(rotation=45, ha="right")
+
+            plt.tight_layout()
+            previous_day_plot = plot_dir / "electricity_consumption_previous_day.png"
+            plt.savefig(previous_day_plot, dpi=150, bbox_inches="tight")
+            plt.close()
+            plot_files["previous_day"] = previous_day_plot.name
+            plot_files["previous_day_date"] = str(previous_day_start.date())
+            print(f"Created plot: {previous_day_plot}")
+
         # Add idle power info to plot_files for use in dashboard
         if CALCULATE_IDLE_POWER:
             plot_files["idle_power_kw"] = idle_power_kw
@@ -384,6 +454,22 @@ def create_html_dashboard(
         max_row = df.loc[df["Esum"].idxmax()]
         max_date = pd.to_datetime(max_row["Datestamp"]).strftime("%Y-%m-%d")
         total_days = len(df)
+        requested_previous_day = (datetime.now() - timedelta(days=1)).date()
+        previous_day_date = requested_previous_day.strftime("%Y-%m-%d")
+        previous_day_rows = df[df["Datestamp"].dt.date == requested_previous_day]
+        if not previous_day_rows.empty:
+            previous_day_consumption = float(previous_day_rows.iloc[0]["Esum"])
+        else:
+            previous_day_consumption = 0.0
+
+        prior_day_rows = df[
+            df["Datestamp"].dt.date == (requested_previous_day - timedelta(days=1))
+        ]
+        if not prior_day_rows.empty and not previous_day_rows.empty:
+            prior_day_consumption = float(prior_day_rows.iloc[0]["Esum"])
+            previous_day_change = previous_day_consumption - prior_day_consumption
+        else:
+            previous_day_change = 0.0
 
         fun_context = kwh_in_context_three(avg_consumption)
 
@@ -439,6 +525,9 @@ def create_html_dashboard(
         total_days = 0
         monthly_avg = pd.DataFrame()
         fun_context = {"kettles_boiled": 0, "ev_miles": 0, "blue_whale_lifts": 0}
+        previous_day_consumption = 0.0
+        previous_day_date = "N/A"
+        previous_day_change = 0.0
         trend_change_pct = 0.0
         trend_subtext = "No data"
 
@@ -530,11 +619,27 @@ def create_html_dashboard(
             "    </div>",
         ]
 
+        if "previous_day" in plot_files:
+            previous_day_plot_date = plot_files.get(
+                "previous_day_date", previous_day_date
+            )
+            html_lines += [
+                '    <div class="section">',
+                "      <h2>Day View</h2>",
+                '      <div class="summary">',
+                f"        <p><strong>Date:</strong> {previous_day_plot_date}</p>",
+                f"        <p><strong>Consumption:</strong> {previous_day_consumption:.1f} kWh</p>",
+                f"        <p><strong>Change vs previous recorded day:</strong> {previous_day_change:+.1f} kWh</p>",
+                "      </div>",
+                f'      <img src="{plot_files["previous_day"]}" alt="Previous day power consumption" />',
+                "    </div>",
+            ]
+
         # Granular consumption section (minute-level data for last week) - SHOWN FIRST
         if "granular" in plot_files:
             html_lines += [
                 '    <div class="section">',
-                "      <h2>Minute-Level Power Consumption (Last 7 Days)</h2>",
+                "      <h2>Week View</h2>",
             ]
 
             if "idle_power_kw" in plot_files:
@@ -552,40 +657,35 @@ def create_html_dashboard(
             )
 
             html_lines += [
+                "      <h3>Energy Equivalents (Average Daily)</h3>",
+                '      <div class="summary">',
+                f"        <p>Based on average daily consumption of <strong>{avg_consumption:.1f} kWh/day</strong></p>",
+                "      </div>",
+                '      <div class="stats-grid">',
+                '        <div class="stat-card teal">',
+                "          <h3>Kettles Boiled</h3>",
+                f'          <div class="value">{fun_context["kettles_boiled"]:.1f}</div>',
+                '          <div class="unit">full kettles per day</div>',
+                "        </div>",
+                '        <div class="stat-card">',
+                "          <h3>EV Miles</h3>",
+                f'          <div class="value">{fun_context["ev_miles"]:.1f}</div>',
+                '          <div class="unit">miles per day</div>',
+                "        </div>",
+                '        <div class="stat-card yellow">',
+                "          <h3>Blue Whale Lifts</h3>",
+                f'          <div class="value">{fun_context["blue_whale_lifts"]:.1f}</div>',
+                '          <div class="unit">1 m lifts per day</div>',
+                "        </div>",
+                "      </div>",
                 "    </div>",
             ]
 
-        # Fun energy equivalents section - moved here
+        # Combined daily and monthly trends section
         html_lines += [
             '    <div class="section">',
-            "      <h2>Energy Equivalents (Average Daily)</h2>",
-            '      <div class="summary">',
-            f"        <p>Based on average daily consumption of <strong>{avg_consumption:.1f} kWh/day</strong></p>",
-            "      </div>",
-            '      <div class="stats-grid">',
-            '        <div class="stat-card teal">',
-            "          <h3>Kettles Boiled</h3>",
-            f'          <div class="value">{fun_context["kettles_boiled"]:.1f}</div>',
-            '          <div class="unit">full kettles per day</div>',
-            "        </div>",
-            '        <div class="stat-card">',
-            "          <h3>EV Miles</h3>",
-            f'          <div class="value">{fun_context["ev_miles"]:.1f}</div>',
-            '          <div class="unit">miles per day</div>',
-            "        </div>",
-            '        <div class="stat-card yellow">',
-            "          <h3>Blue Whale Lifts</h3>",
-            f'          <div class="value">{fun_context["blue_whale_lifts"]:.1f}</div>',
-            '          <div class="unit">1 m lifts per day</div>',
-            "        </div>",
-            "      </div>",
-            "    </div>",
-        ]
-
-        # Daily Consumption Trends section
-        html_lines += [
-            '    <div class="section">',
-            "      <h2>Daily Consumption Trends (Last Year)</h2>",
+            "      <h2>Month View</h2>",
+            "      <h3>Daily Consumption Trends</h3>",
         ]
 
         if "daily" in plot_files:
@@ -596,13 +696,7 @@ def create_html_dashboard(
             html_lines.append("      <p><em>Daily trend plot not available</em></p>")
 
         html_lines += [
-            "    </div>",
-        ]
-
-        # Monthly Consumption section
-        html_lines += [
-            '    <div class="section">',
-            "      <h2>Monthly Consumption (Last Year)</h2>",
+            "      <h3>Monthly Consumption</h3>",
         ]
 
         if "monthly" in plot_files:
@@ -614,15 +708,9 @@ def create_html_dashboard(
                 "      <p><em>Monthly consumption plot not available</em></p>"
             )
 
-        html_lines += [
-            "    </div>",
-        ]
-
-        # Monthly averages section
         if not monthly_avg.empty:
             html_lines += [
-                '    <div class="section">',
-                "      <h2>Monthly Average Consumption</h2>",
+                "      <h3>Average Daily Consumption</h3>",
                 "      <table>",
                 "        <thead>",
                 "          <tr>",
@@ -641,33 +729,12 @@ def create_html_dashboard(
             html_lines += [
                 "        </tbody>",
                 "      </table>",
-                "    </div>",
             ]
 
-        # Recent daily consumption table
         html_lines += [
-            '    <div class="section">',
-            "      <h2>Recent Daily Data (Last 30 Days)</h2>",
-            "      <table>",
-            "        <thead>",
-            "          <tr>",
-            "            <th>Date</th>",
-            "            <th>Consumption (kWh)</th>",
-            "          </tr>",
-            "        </thead>",
-            "        <tbody>",
-        ]
-
-        for _, row in df.head(30).iterrows():
-            html_lines.append(
-                f"          <tr><td>{row['Datestamp'].strftime('%Y-%m-%d')}</td><td>{row['Esum']:.2f}</td></tr>"
-            )
-
-        html_lines += [
-            "        </tbody>",
-            "      </table>",
             "    </div>",
         ]
+
     else:
         html_lines += [
             '    <div class="no-data">',
