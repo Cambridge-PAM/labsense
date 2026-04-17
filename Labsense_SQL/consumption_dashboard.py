@@ -174,6 +174,11 @@ def create_plots(
     except Exception:
         savgol_filter = None
 
+    try:
+        dbscan_cls = importlib.import_module("sklearn.cluster").DBSCAN
+    except Exception:
+        dbscan_cls = None
+
     if df.empty:
         return {}
 
@@ -484,9 +489,10 @@ def create_plots(
                 )
                 above_noise = smoothed_delta.abs() >= noise_threshold
 
-                # Label local peaks/troughs that are above the noise threshold.
+                # Collect significant local extrema above the noise threshold.
                 smoothed_vals = smoothed_delta.to_numpy()
                 above_noise_vals = above_noise.to_numpy()
+                extrema = []  # list of (data_idx, value)
                 for idx in range(1, len(smoothed_vals) - 1):
                     if not above_noise_vals[idx]:
                         continue
@@ -498,26 +504,175 @@ def create_plots(
                         smoothed_vals[idx] <= smoothed_vals[idx - 1]
                         and smoothed_vals[idx] < smoothed_vals[idx + 1]
                     )
-                    if not (is_local_max or is_local_min):
-                        continue
+                    if is_local_max or is_local_min:
+                        extrema.append((idx, float(smoothed_vals[idx])))
 
-                    peak_val = float(smoothed_vals[idx])
+                # Cluster extrema with DBSCAN using |delta| only (no time binning).
+                # This ties +/− events of similar magnitude to the same equipment.
+                dbscan_eps = noise_threshold * 0.33
+                cluster_assignments = {}  # extrema list index -> global cluster id
+                cluster_stats = {}  # global cluster id -> {mean_abs, mean_hour}
+                next_cluster_id = 0
+
+                if dbscan_cls is not None and dbscan_eps > 0 and extrema:
+                    abs_values = [[abs(val)] for _, val in extrema]
+                    dbscan_labels = dbscan_cls(
+                        eps=dbscan_eps,
+                        min_samples=3,
+                    ).fit_predict(abs_values)
+
+                    for label in sorted(set(dbscan_labels)):
+                        member_indices = [
+                            i
+                            for i, member_label in enumerate(dbscan_labels)
+                            if member_label == label
+                        ]
+                        mean_abs = sum(
+                            abs(extrema[m][1]) for m in member_indices
+                        ) / len(member_indices)
+                        mean_hour = sum(
+                            previous_day_data["Timestamp"].iloc[extrema[m][0]].hour
+                            + previous_day_data["Timestamp"].iloc[extrema[m][0]].minute
+                            / 60.0
+                            + previous_day_data["Timestamp"].iloc[extrema[m][0]].second
+                            / 3600.0
+                            for m in member_indices
+                        ) / len(member_indices)
+                        cluster_stats[next_cluster_id] = {
+                            "mean_abs": mean_abs,
+                            "mean_hour": mean_hour,
+                        }
+                        for m in member_indices:
+                            cluster_assignments[m] = next_cluster_id
+                        next_cluster_id += 1
+                else:
+                    # Fallback when DBSCAN isn't available: keep each extrema as its own cluster.
+                    for i, (idx, val) in enumerate(extrema):
+                        ts = previous_day_data["Timestamp"].iloc[idx]
+                        cluster_assignments[i] = next_cluster_id
+                        cluster_stats[next_cluster_id] = {
+                            "mean_abs": abs(float(val)),
+                            "mean_hour": ts.hour
+                            + ts.minute / 60.0
+                            + ts.second / 3600.0,
+                        }
+                        next_cluster_id += 1
+
+                # Labels are ranked by absolute magnitude, regardless of event time.
+                cluster_label_map = {}
+                ordered_cluster_ids = sorted(
+                    cluster_stats,
+                    key=lambda cid: -cluster_stats[cid]["mean_abs"],
+                )
+                for rank, cid in enumerate(ordered_cluster_ids):
+                    cluster_label_map[cid] = chr(65 + rank)
+
+                _CLUSTER_COLORS = [
+                    "#e74c3c",
+                    "#2ecc71",
+                    "#3498db",
+                    "#f39c12",
+                    "#9b59b6",
+                    "#1abc9c",
+                    "#e67e22",
+                    "#34495e",
+                ]
+
+                for i, (idx, peak_val) in enumerate(extrema):
+                    c_id = cluster_assignments[i]
+                    c_label = cluster_label_map[c_id]
+                    color = _CLUSTER_COLORS[c_id % len(_CLUSTER_COLORS)]
                     ax_delta.annotate(
-                        f"{peak_val:.1f}",
+                        f"{c_label}: {peak_val:.1f}",
                         xy=(previous_day_data["Timestamp"].iloc[idx], peak_val),
                         xytext=(0, 6 if peak_val >= 0 else -6),
                         textcoords="offset points",
                         ha="center",
                         va="bottom" if peak_val >= 0 else "top",
                         fontsize=8,
-                        color="#6c3483",
+                        color=color,
                         bbox={
                             "boxstyle": "round,pad=0.15",
                             "fc": "white",
                             "alpha": 0.75,
-                            "ec": "none",
+                            "ec": color,
                         },
                     )
+
+                # Show DBSCAN grouping in hour-bin vs |delta| space.
+                if extrema and cluster_stats:
+                    fig_cluster, ax_cluster = plt.subplots(figsize=(10, 4.5))
+
+                    for i, (idx, peak_val) in enumerate(extrema):
+                        c_id = cluster_assignments[i]
+                        color = _CLUSTER_COLORS[c_id % len(_CLUSTER_COLORS)]
+                        ts = previous_day_data["Timestamp"].iloc[idx]
+                        hour_of_day = ts.hour + ts.minute / 60.0 + ts.second / 3600.0
+                        ax_cluster.scatter(
+                            hour_of_day,
+                            abs(peak_val),
+                            color=color,
+                            alpha=0.85,
+                            s=45,
+                            marker="^" if peak_val >= 0 else "v",
+                            edgecolors="white",
+                            linewidths=0.5,
+                        )
+
+                    # Plot cluster centroids and labels.
+                    for c_id, stats in cluster_stats.items():
+                        color = _CLUSTER_COLORS[c_id % len(_CLUSTER_COLORS)]
+                        c_label = cluster_label_map[c_id]
+                        ax_cluster.scatter(
+                            stats["mean_hour"],
+                            stats["mean_abs"],
+                            color=color,
+                            marker="D",
+                            s=90,
+                            edgecolors="black",
+                            linewidths=0.8,
+                            zorder=3,
+                        )
+                        ax_cluster.annotate(
+                            c_label,
+                            xy=(stats["mean_hour"], stats["mean_abs"]),
+                            xytext=(0, 7),
+                            textcoords="offset points",
+                            ha="center",
+                            va="bottom",
+                            fontsize=8,
+                            color=color,
+                            bbox={
+                                "boxstyle": "round,pad=0.12",
+                                "fc": "white",
+                                "alpha": 0.8,
+                                "ec": color,
+                            },
+                        )
+
+                    ax_cluster.set_title(
+                        (
+                            "DBSCAN Clusters: Hour-of-Day vs |Delta| "
+                            f"(eps={dbscan_eps:.3f} kW)"
+                        ),
+                        fontsize=12,
+                        fontweight="bold",
+                    )
+                    ax_cluster.set_xlabel("Hour of Day")
+                    ax_cluster.set_ylabel("|Delta| (kW over last 5 min)")
+                    ax_cluster.set_xlim(-0.5, 23.5)
+                    ax_cluster.set_xticks(range(0, 24, 2))
+                    ax_cluster.grid(True, alpha=0.3)
+
+                    cluster_plot = (
+                        plot_dir
+                        / "electricity_consumption_previous_day_cluster_hour_delta.png"
+                    )
+                    fig_cluster.tight_layout()
+                    fig_cluster.savefig(cluster_plot, dpi=150, bbox_inches="tight")
+                    plt.close(fig_cluster)
+                    plot_files["previous_day_cluster_hour_delta"] = cluster_plot.name
+                    print(f"Created plot: {cluster_plot}")
             ax_delta.set_ylabel("Delta (kW over last 5 min)", fontsize=11)
             ax_delta.set_xlabel("Time", fontsize=12)
             ax_delta.grid(True, alpha=0.3)
@@ -750,6 +905,16 @@ def create_html_dashboard(
                 f"        <p><strong>Change vs previous recorded day:</strong> {previous_day_change:+.1f} kWh</p>",
                 "      </div>",
                 f'      <img src="{plot_files["previous_day"]}" alt="Previous day power consumption" />',
+            ]
+
+            if "previous_day_cluster_hour_delta" in plot_files:
+                html_lines += [
+                    "      <h3>Hour-of-Day vs Delta Clusters</h3>",
+                    "      <p><em>Points are local extrema above the noise threshold. Up/down markers indicate positive/negative deltas; color and label indicate DBSCAN clusters based on delta magnitude only.</em></p>",
+                    f'      <img src="{plot_files["previous_day_cluster_hour_delta"]}" alt="Hour of day vs delta DBSCAN clusters" />',
+                ]
+
+            html_lines += [
                 "    </div>",
             ]
 

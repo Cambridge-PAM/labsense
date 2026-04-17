@@ -9,6 +9,7 @@ dependencies:
   - pandas
   - numpy
   - scipy
+  - scikit-learn
   
   # Testing
   - pytest
