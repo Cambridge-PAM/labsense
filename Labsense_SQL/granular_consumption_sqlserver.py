@@ -6,6 +6,7 @@ import argparse
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import csv
 
 # Load environment variables from .env file in the repository root
 repo_root = Path(__file__).resolve().parents[1]
@@ -200,6 +201,54 @@ def process_date_range(start_date, end_date):
     )
 
 
+def export_sql_data_for_date(target_date, output_path=None):
+    """Export elecMinute SQL rows for a given date to CSV.
+
+    Args:
+        target_date: datetime.date for the day to export
+        output_path: Optional CSV path. Defaults to plots/elecMinute_YYYY-MM-DD.csv
+
+    Returns:
+        Path to the written CSV file.
+    """
+    start_datetime = datetime.datetime.combine(target_date, datetime.time.min)
+    end_datetime = start_datetime + datetime.timedelta(days=1)
+
+    output_file = (
+        Path(output_path)
+        if output_path
+        else repo_root / "plots" / f"elecMinute_{target_date.isoformat()}.csv"
+    )
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        connection = pyodbc.connect(connection_string)
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT id, EnergyValue, Timestamp
+            FROM elecMinute
+            WHERE Timestamp >= ? AND Timestamp < ?
+            ORDER BY Timestamp ASC
+            """,
+            (start_datetime, end_datetime),
+        )
+        rows = cursor.fetchall()
+        connection.close()
+    except pyodbc.Error as ex:
+        print(f"An error occurred exporting SQL data: {ex}")
+        raise
+
+    with output_file.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(["id", "EnergyValue", "Timestamp"])
+        for row in rows:
+            writer.writerow([row.id, row.EnergyValue, row.Timestamp])
+
+    print(f"Exported {len(rows)} elecMinute rows to {output_file}")
+    return output_file
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Insert minute-level electricity consumption data into SQL Server. "
@@ -215,6 +264,16 @@ def main():
         type=str,
         help="End date in YYYY-MM-DD format (inclusive). If provided, --start-date must also be specified.",
     )
+    parser.add_argument(
+        "--export-date",
+        type=str,
+        help="Export elecMinute SQL data for a single date in YYYY-MM-DD format.",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        help="Optional output CSV path for --export-date.",
+    )
 
     args = parser.parse_args()
 
@@ -223,6 +282,20 @@ def main():
         args.end_date and not args.start_date
     ):
         parser.error("Both --start-date and --end-date must be provided together")
+
+    if args.export_date and (args.start_date or args.end_date):
+        parser.error("--export-date cannot be combined with --start-date/--end-date")
+
+    if args.export_date:
+        try:
+            export_date = datetime.datetime.strptime(
+                args.export_date, "%Y-%m-%d"
+            ).date()
+        except ValueError as ex:
+            parser.error(f"Invalid export date format: {ex}. Use YYYY-MM-DD format.")
+
+        export_sql_data_for_date(export_date, output_path=args.output)
+        return
 
     if args.start_date and args.end_date:
         # Parse dates
