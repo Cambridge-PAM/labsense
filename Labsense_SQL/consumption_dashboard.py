@@ -11,23 +11,21 @@ consumption data and creates visualizations and an HTML dashboard.
 CALCULATE_IDLE_POWER = True
 # =============================================================================
 
-import sys
+import argparse
+import importlib
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
+
 from dotenv import load_dotenv
 
-# Add repository root to sys.path to allow absolute imports when running this file directly
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import pyodbc
+import pandas as pd
 
 # Load environment variables from .env file at repo root
 env_path = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(env_path)
-
-import pyodbc
-import pandas as pd
-import argparse
-from datetime import datetime, timedelta
-from typing import Optional
 
 # SQL Server connection details
 SQL_SERVER_NAME = "MSM-FPM-70203\\LABSENSE"
@@ -170,6 +168,11 @@ def create_plots(
     except ImportError:
         print("matplotlib not available - skipping plots")
         return {}
+
+    try:
+        savgol_filter = importlib.import_module("scipy.signal").savgol_filter
+    except Exception:
+        savgol_filter = None
 
     if df.empty:
         return {}
@@ -358,10 +361,52 @@ def create_plots(
             & (df_gran["Timestamp"] < previous_day_end)
         ].copy()
         if not previous_day_data.empty:
-            fig, ax = plt.subplots(figsize=(14, 6))
+            previous_day_data = previous_day_data.sort_values(by=["Timestamp"]).copy()
+            # Rolling 5-minute net change: sum minute-to-minute active-power deltas.
+            prev_day_idx = previous_day_data.set_index("Timestamp")
+            prev_day_idx["Active_Power_Delta_5min_kW"] = (
+                prev_day_idx["Active_Power_kW"].diff().fillna(0.0).rolling("5min").sum()
+            )
+            previous_day_data["Active_Power_Delta_5min_kW"] = (
+                prev_day_idx["Active_Power_Delta_5min_kW"].fillna(0.0).values
+            )
+
+            raw_delta = previous_day_data["Active_Power_Delta_5min_kW"].astype(float)
+            smoothed_delta = raw_delta.copy()
+            smoothed_delta_label = "Smoothed Delta (raw fallback)"
+            if savgol_filter is not None and len(raw_delta) >= 7:
+                window_length = min(
+                    31,
+                    len(raw_delta) if len(raw_delta) % 2 == 1 else len(raw_delta) - 1,
+                )
+                if window_length >= 7:
+                    smoothed_delta = pd.Series(
+                        savgol_filter(
+                            raw_delta.to_numpy(),
+                            window_length=window_length,
+                            polyorder=2,
+                            mode="interp",
+                        ),
+                        index=raw_delta.index,
+                    )
+                    smoothed_delta_label = "Smoothed Delta (Savitzky-Golay)"
+
+            residual = raw_delta - smoothed_delta
+            median_residual = float(residual.median())
+            mad = float((residual - median_residual).abs().median())
+            noise_sigma = 1.4826 * mad if mad > 0 else float(residual.std())
+            noise_threshold = 3.0 * noise_sigma if noise_sigma > 0 else 0.0
+
+            fig, (ax_power, ax_delta) = plt.subplots(
+                2,
+                1,
+                figsize=(14, 8),
+                sharex=True,
+                gridspec_kw={"height_ratios": [3, 1]},
+            )
 
             if CALCULATE_IDLE_POWER and idle_power_kw > 0:
-                ax.plot(
+                ax_power.plot(
                     previous_day_data["Timestamp"],
                     previous_day_data["Power_kW"],
                     linewidth=0.8,
@@ -369,14 +414,14 @@ def create_plots(
                     alpha=0.5,
                     label=f"Total Power (inc. {idle_power_kw:.2f} kW idle)",
                 )
-                ax.plot(
+                ax_power.plot(
                     previous_day_data["Timestamp"],
                     previous_day_data["Active_Power_kW"],
                     linewidth=1.2,
                     color="#3498db",
                     label="Active Power",
                 )
-                ax.axhline(
+                ax_power.axhline(
                     y=idle_power_kw,
                     color="#e74c3c",
                     linestyle="--",
@@ -386,7 +431,7 @@ def create_plots(
                 )
                 previous_day_title_suffix = " - Active vs Total"
             else:
-                ax.plot(
+                ax_power.plot(
                     previous_day_data["Timestamp"],
                     previous_day_data["Power_kW"],
                     linewidth=1.2,
@@ -395,16 +440,62 @@ def create_plots(
                 )
                 previous_day_title_suffix = ""
 
-            ax.set_xlabel("Time", fontsize=12)
-            ax.set_ylabel("Power (kW)", fontsize=12)
-            ax.set_title(
+            ax_power.set_ylabel("Power (kW)", fontsize=12)
+            ax_power.set_title(
                 f"Minute-Level Power Consumption ({previous_day_start.date()}){previous_day_title_suffix}",
                 fontsize=14,
                 fontweight="bold",
             )
-            ax.grid(True, alpha=0.3)
-            ax.legend(loc="upper right")
-            ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+            ax_power.grid(True, alpha=0.3)
+            ax_power.legend(loc="upper right")
+
+            ax_delta.plot(
+                previous_day_data["Timestamp"],
+                raw_delta,
+                linewidth=1.0,
+                color="#95a5a6",
+                alpha=0.45,
+                label="Raw Delta (rolling 5-min)",
+            )
+            ax_delta.plot(
+                previous_day_data["Timestamp"],
+                smoothed_delta,
+                linewidth=1.6,
+                color="#8e44ad",
+                label=smoothed_delta_label,
+            )
+            ax_delta.axhline(y=0.0, color="#7f8c8d", linestyle="--", linewidth=1.0)
+            if noise_threshold > 0:
+                ax_delta.axhline(
+                    y=noise_threshold,
+                    color="#e67e22",
+                    linestyle=":",
+                    linewidth=1.0,
+                    alpha=0.9,
+                    label="Noise Threshold",
+                )
+                ax_delta.axhline(
+                    y=-noise_threshold,
+                    color="#e67e22",
+                    linestyle=":",
+                    linewidth=1.0,
+                    alpha=0.9,
+                )
+                above_noise = smoothed_delta.abs() >= noise_threshold
+                ax_delta.fill_between(
+                    previous_day_data["Timestamp"],
+                    smoothed_delta,
+                    0.0,
+                    where=above_noise,
+                    color="#8e44ad",
+                    alpha=0.15,
+                    label="Above Noise",
+                )
+            ax_delta.set_ylabel("Delta (kW over last 5 min)", fontsize=11)
+            ax_delta.set_xlabel("Time", fontsize=12)
+            ax_delta.grid(True, alpha=0.3)
+            ax_delta.legend(loc="upper right")
+            ax_delta.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
             plt.xticks(rotation=45, ha="right")
 
             plt.tight_layout()
