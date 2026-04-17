@@ -448,7 +448,7 @@ def create_plots(
                 fontweight="bold",
             )
             ax_power.grid(True, alpha=0.3)
-            ax_power.legend(loc="upper right")
+            ax_power.legend(loc="upper left")
 
             ax_delta.plot(
                 previous_day_data["Timestamp"],
@@ -483,19 +483,45 @@ def create_plots(
                     alpha=0.9,
                 )
                 above_noise = smoothed_delta.abs() >= noise_threshold
-                ax_delta.fill_between(
-                    previous_day_data["Timestamp"],
-                    smoothed_delta,
-                    0.0,
-                    where=above_noise,
-                    color="#8e44ad",
-                    alpha=0.15,
-                    label="Above Noise",
-                )
+
+                # Label local peaks/troughs that are above the noise threshold.
+                smoothed_vals = smoothed_delta.to_numpy()
+                above_noise_vals = above_noise.to_numpy()
+                for idx in range(1, len(smoothed_vals) - 1):
+                    if not above_noise_vals[idx]:
+                        continue
+                    is_local_max = (
+                        smoothed_vals[idx] >= smoothed_vals[idx - 1]
+                        and smoothed_vals[idx] > smoothed_vals[idx + 1]
+                    )
+                    is_local_min = (
+                        smoothed_vals[idx] <= smoothed_vals[idx - 1]
+                        and smoothed_vals[idx] < smoothed_vals[idx + 1]
+                    )
+                    if not (is_local_max or is_local_min):
+                        continue
+
+                    peak_val = float(smoothed_vals[idx])
+                    ax_delta.annotate(
+                        f"{peak_val:.1f}",
+                        xy=(previous_day_data["Timestamp"].iloc[idx], peak_val),
+                        xytext=(0, 6 if peak_val >= 0 else -6),
+                        textcoords="offset points",
+                        ha="center",
+                        va="bottom" if peak_val >= 0 else "top",
+                        fontsize=8,
+                        color="#6c3483",
+                        bbox={
+                            "boxstyle": "round,pad=0.15",
+                            "fc": "white",
+                            "alpha": 0.75,
+                            "ec": "none",
+                        },
+                    )
             ax_delta.set_ylabel("Delta (kW over last 5 min)", fontsize=11)
             ax_delta.set_xlabel("Time", fontsize=12)
             ax_delta.grid(True, alpha=0.3)
-            ax_delta.legend(loc="upper right")
+            ax_delta.legend(loc="upper left")
             ax_delta.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
             plt.xticks(rotation=45, ha="right")
 
