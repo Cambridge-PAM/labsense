@@ -22,7 +22,8 @@ import pandas as pd
 import argparse
 from datetime import datetime
 from typing import Optional, Dict
-import re
+from html import escape
+from Labsense_SQL.ChemInventory_sqlserver import get_red_category_chemical_volumes
 from Labsense_SQL.gsk_enviro_dict_temp import (
     gsk_composite_red,
     gsk_inc_red,
@@ -78,6 +79,15 @@ CATEGORY_RED_SOLVENTS = {
     "chemAquatic": gsk_aqua_red,
     "chemAir": gsk_air_red,
     "chemHealth": gsk_health_red,
+}
+
+RED_CATEGORY_LABELS = {
+    "chemComposite": "composite",
+    "chemIncineration": "incineration",
+    "chemVOC": "voc",
+    "chemAquatic": "aquatic",
+    "chemAir": "air",
+    "chemHealth": "health",
 }
 
 CATEGORY_GREEN_SOLVENTS = {
@@ -203,6 +213,7 @@ def create_html_dashboard(
     data: Dict[str, pd.DataFrame],
     plot_files: Dict[str, str],
     plot_dir: Path,
+    red_inventory_df: Optional[pd.DataFrame] = None,
     out_file: Optional[Path] = None,
 ):
     """Create an HTML dashboard for ChemInventory data."""
@@ -297,34 +308,48 @@ def create_html_dashboard(
         ]
 
         # Add red chemical substitution list with green alternatives
-        red_solvents = CATEGORY_RED_SOLVENTS.get(category, {})
-        green_solvents = CATEGORY_GREEN_SOLVENTS.get(category, {})
-        if red_solvents:
-            red_items = "".join(
-                f"<li>{name} <span style='color:#888;font-size:0.85em;'>({cas})</span></li>"
-                for name, cas in sorted(red_solvents.items())
+        red_inventory_rows = []
+        if red_inventory_df is not None and not red_inventory_df.empty:
+            filtered_red_inventory = red_inventory_df.loc[
+                (red_inventory_df["category"] == RED_CATEGORY_LABELS[category])
+                & (red_inventory_df["volume_litres"] > 0)
+            ]
+            red_inventory_rows = [row for _, row in filtered_red_inventory.iterrows()]
+            red_inventory_rows = sorted(
+                red_inventory_rows,
+                key=lambda row: (
+                    -float(row["volume_litres"]),
+                    str(row["chemical_name"]),
+                ),
             )
+
+        red_solvents = CATEGORY_RED_SOLVENTS.get(category, {})
+        if red_solvents:
+            if red_inventory_rows:
+                red_items = "".join(
+                    "<tr>"
+                    f"<td>{escape(str(row['chemical_name']))}</td>"
+                    f"<td>{escape(str(row['cas_number']))}</td>"
+                    f"<td>{float(row['volume_litres']):.2f}</td>"
+                    "</tr>"
+                    for row in red_inventory_rows
+                )
+                red_content = [
+                    "        <table style='margin-top:10px;'>",
+                    "          <thead><tr><th style='background:#e74c3c;'>Chemical</th><th style='background:#e74c3c;'>CAS</th><th style='background:#e74c3c;'>Volume (L)</th></tr></thead>",
+                    f"          <tbody>{red_items}</tbody>",
+                    "        </table>",
+                ]
+            else:
+                red_content = [
+                    "        <p style='margin:0;color:#555;'>No red-classified chemicals with positive held volume were found in this category at the time this dashboard was generated.</p>"
+                ]
             html_lines += [
                 '      <div style="background:#fdf3f3;border-left:4px solid #e74c3c;border-radius:6px;padding:15px 20px;margin:18px 0;">',
-                '        <h4 style="margin:0 0 8px 0;color:#c0392b;">&#9888; Red-classified chemicals in this category</h4>',
-                '        <p style="margin:0 0 10px 0;color:#555;">The following chemicals are classified <strong>red</strong> under this impact category. '
-                "Consider substituting these chemicals for greener alternatives where possible to reduce environmental and health risk.</p>",
-                f'        <ul style="margin:0;padding-left:20px;columns:2;-webkit-columns:2;column-gap:30px;">{red_items}</ul>',
+                '        <h4 style="margin:0 0 8px 0;color:#c0392b;">&#9888; Red-classified chemicals currently held in this category</h4>',
                 "      </div>",
             ]
-        if green_solvents:
-            green_items = "".join(
-                f"<li>{name} <span style='color:#888;font-size:0.85em;'>({cas})</span></li>"
-                for name, cas in sorted(green_solvents.items())
-            )
-            html_lines += [
-                '      <div style="background:#f2fbf5;border-left:4px solid #27ae60;border-radius:6px;padding:15px 20px;margin:18px 0;">',
-                '        <h4 style="margin:0 0 8px 0;color:#1e8449;">&#9989; Green-classified chemicals — consider these as substitutes</h4>',
-                '        <p style="margin:0 0 10px 0;color:#555;">The following chemicals are classified <strong>green</strong> under this impact category '
-                "and represent lower-risk alternatives worth considering as replacements for red-classified chemicals.</p>",
-                f'        <ul style="margin:0;padding-left:20px;columns:2;-webkit-columns:2;column-gap:30px;">{green_items}</ul>',
-                "      </div>",
-            ]
+            html_lines[-1:-1] = red_content
 
         # Add plot if available
         if category in plot_files:
@@ -411,12 +436,15 @@ def main():
 
     print(f"Found data for {len(data)} categories")
 
+    print("Fetching live red-category holdings...")
+    red_inventory_df = get_red_category_chemical_volumes()
+
     print("Creating plots...")
     plot_files = create_plots(data, plot_dir)
 
     print("Creating HTML dashboard...")
     out_file = Path(args.out) if args.out else None
-    create_html_dashboard(data, plot_files, plot_dir, out_file)
+    create_html_dashboard(data, plot_files, plot_dir, red_inventory_df, out_file)
 
     print("Done!")
 

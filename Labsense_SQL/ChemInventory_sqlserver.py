@@ -93,53 +93,41 @@ def _build_http_session(max_retries: int) -> req.Session:
     return session
 
 
-def _red_category_map() -> Dict[str, str]:
-    """Return CAS -> category mapping for all red-category GSK lists."""
-    red_lookup: Dict[str, str] = {}
+def _red_category_map() -> Dict[str, List[str]]:
+    """Return CAS -> red categories mapping for all red-category GSK lists."""
+    red_lookup: Dict[str, List[str]] = {}
     for cas in gsk_composite_red.values():
-        red_lookup[cas] = "composite"
+        red_lookup.setdefault(cas, []).append("composite")
     for cas in gsk_inc_red.values():
-        red_lookup[cas] = "incineration"
+        red_lookup.setdefault(cas, []).append("incineration")
     for cas in gsk_voc_red.values():
-        red_lookup[cas] = "voc"
+        red_lookup.setdefault(cas, []).append("voc")
     for cas in gsk_aqua_red.values():
-        red_lookup[cas] = "aquatic"
+        red_lookup.setdefault(cas, []).append("aquatic")
     for cas in gsk_air_red.values():
-        red_lookup[cas] = "air"
+        red_lookup.setdefault(cas, []).append("air")
     for cas in gsk_health_red.values():
-        red_lookup[cas] = "health"
+        red_lookup.setdefault(cas, []).append("health")
     return red_lookup
 
 
-def export_red_category_chemicals_csv(
-    output_path: Optional[str] = None,
+def get_red_category_chemical_volumes(
     timeout: int = 10,
     max_retries: int = 3,
-) -> Path:
-    """Export all red-category chemicals and current in-stock volumes to CSV.
-
-    CSV columns:
-        chemical_name, cas_number, category, volume_litres, exported_at
-    """
+) -> pd.DataFrame:
+    """Return live red-category chemical inventory volumes from ChemInventory."""
     chem_token = os.getenv("CHEMINVENTORY_CONNECTION_STRING")
     if not chem_token:
         raise RuntimeError("CHEMINVENTORY_CONNECTION_STRING is required for API access")
 
-    output = (
-        Path(output_path)
-        if output_path
-        else (repo_root / "plots" / "red_category_chemicals.csv")
-    )
-    output.parent.mkdir(parents=True, exist_ok=True)
-
     red_lookup = _red_category_map()
-    red_rows = []
     session = _build_http_session(max_retries=max_retries)
     exported_at = datetime.datetime.now().isoformat(timespec="seconds")
+    red_rows = []
 
     for chemical_name, cas_number in gsk_2016.items():
-        category = red_lookup.get(cas_number)
-        if not category:
+        categories = red_lookup.get(cas_number, [])
+        if not categories:
             continue
 
         response = session.post(
@@ -173,19 +161,45 @@ def export_red_category_chemicals_csv(
                 unit = list(ci_df_real.get("unit", []))
                 total_litres, _ = sizes_to_litres(size, unit)
 
-        red_rows.append(
-            {
-                "chemical_name": chemical_name,
-                "cas_number": cas_number,
-                "category": category,
-                "volume_litres": round(float(total_litres), 6),
-                "exported_at": exported_at,
-            }
-        )
+        for category in categories:
+            red_rows.append(
+                {
+                    "chemical_name": chemical_name,
+                    "cas_number": cas_number,
+                    "category": category,
+                    "volume_litres": round(float(total_litres), 6),
+                    "exported_at": exported_at,
+                }
+            )
 
-    pd.DataFrame(red_rows).sort_values(by=["category", "chemical_name"]).to_csv(
-        output, index=False
+    return pd.DataFrame(red_rows).sort_values(by=["category", "chemical_name"])
+
+
+def export_red_category_chemicals_csv(
+    output_path: Optional[str] = None,
+    timeout: int = 10,
+    max_retries: int = 3,
+) -> Path:
+    """Export all red-category chemicals and current in-stock volumes to CSV.
+
+    CSV columns:
+        chemical_name, cas_number, category, volume_litres, exported_at
+    """
+    chem_token = os.getenv("CHEMINVENTORY_CONNECTION_STRING")
+    if not chem_token:
+        raise RuntimeError("CHEMINVENTORY_CONNECTION_STRING is required for API access")
+
+    output = (
+        Path(output_path)
+        if output_path
+        else (repo_root / "plots" / "red_category_chemicals.csv")
     )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    red_rows = get_red_category_chemical_volumes(
+        timeout=timeout,
+        max_retries=max_retries,
+    )
+    red_rows.to_csv(output, index=False)
     return output
 
 
