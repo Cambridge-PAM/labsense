@@ -376,7 +376,7 @@ def create_plots(
             smoothed_delta_label = "Smoothed Delta (raw fallback)"
             if savgol_filter is not None and len(raw_delta) >= 7:
                 window_length = min(
-                    31,
+                    9,
                     len(raw_delta) if len(raw_delta) % 2 == 1 else len(raw_delta) - 1,
                 )
                 if window_length >= 7:
@@ -395,7 +395,8 @@ def create_plots(
             median_residual = float(residual.median())
             mad = float((residual - median_residual).abs().median())
             noise_sigma = 1.4826 * mad if mad > 0 else float(residual.std())
-            noise_threshold = 3.0 * noise_sigma if noise_sigma > 0 else 0.0
+            # Lower multiplier increases sensitivity to smaller delta excursions.
+            noise_threshold = 2.0 * noise_sigma if noise_sigma > 0 else 0.0
 
             fig, (ax_power, ax_delta) = plt.subplots(
                 2,

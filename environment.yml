@@ -8,6 +8,7 @@ dependencies:
   # Data processing and analysis
   - pandas
   - numpy
+  - scipy
   
   # Testing
   - pytest
