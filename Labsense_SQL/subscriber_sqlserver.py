@@ -7,7 +7,7 @@ import signal
 from pathlib import Path
 from dotenv import load_dotenv
 import logging
-from typing import Optional, Dict, Any
+from typing import Any
 
 # Load environment variables from Labsense_SQL/.env
 env_path = Path(__file__).parent / ".env"
@@ -333,9 +333,9 @@ def on_log(client, userdata, level, buf):
         logger.warning(f"MQTT Warning: {buf}")
 
 
-def signal_handler(signum, frame):
+def signal_handler(signum, frame):  # pylint: disable=unused-argument
     """Handle shutdown signals gracefully"""
-    global shutdown_flag, client
+    global shutdown_flag  # pylint: disable=global-statement
     logger.info(f"Received signal {signum}. Shutting down gracefully...")
     shutdown_flag = True
     if client:
@@ -346,7 +346,7 @@ def signal_handler(signum, frame):
 
 def main():
     """Main function to start MQTT subscriber"""
-    global client, shutdown_flag
+    global client  # pylint: disable=global-statement
 
     logger.info("=" * 60)
     logger.info("MQTT SQL Server Subscriber Starting")

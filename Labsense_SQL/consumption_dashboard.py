@@ -202,7 +202,7 @@ def create_plots(
     df_sorted["Esum_7d_ma"] = df_sorted["Esum"].rolling(window=7, min_periods=1).mean()
 
     # Create daily consumption trend plot (last year only)
-    fig, ax = plt.subplots(figsize=(12, 6))
+    _fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(
         df_sorted["Datestamp"],
         df_sorted["Esum"],
@@ -248,7 +248,7 @@ def create_plots(
     monthly_data = df_monthly.groupby("YearMonth")["Esum"].sum().reset_index()
     monthly_data["YearMonth"] = monthly_data["YearMonth"].astype(str)
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+    _fig, ax = plt.subplots(figsize=(12, 6))
     ax.bar(
         range(len(monthly_data)),
         monthly_data["Esum"],
@@ -289,7 +289,7 @@ def create_plots(
         # Ensure non-negative
         df_gran["Active_Power_kW"] = df_gran["Active_Power_kW"].clip(lower=0)
 
-        fig, ax = plt.subplots(figsize=(14, 6))
+        _fig, ax = plt.subplots(figsize=(14, 6))
 
         if CALCULATE_IDLE_POWER and idle_power_kw > 0:
             # Plot both total and active power
@@ -402,7 +402,7 @@ def create_plots(
             # Lower multiplier increases sensitivity to smaller delta excursions.
             noise_threshold = 2.0 * noise_sigma if noise_sigma > 0 else 0.0
 
-            fig, (ax_power, ax_delta) = plt.subplots(
+            _fig, (ax_power, ax_delta) = plt.subplots(
                 2,
                 1,
                 figsize=(14, 8),
@@ -566,7 +566,7 @@ def create_plots(
                 for rank, cid in enumerate(ordered_cluster_ids):
                     cluster_label_map[cid] = chr(65 + rank)
 
-                _CLUSTER_COLORS = [
+                cluster_colors = [
                     "#e74c3c",
                     "#2ecc71",
                     "#3498db",
@@ -580,7 +580,7 @@ def create_plots(
                 for i, (idx, peak_val) in enumerate(extrema):
                     c_id = cluster_assignments[i]
                     c_label = cluster_label_map[c_id]
-                    color = _CLUSTER_COLORS[c_id % len(_CLUSTER_COLORS)]
+                    color = cluster_colors[c_id % len(cluster_colors)]
                     ax_delta.annotate(
                         f"{c_label}: {peak_val:.1f}",
                         xy=(previous_day_data["Timestamp"].iloc[idx], peak_val),
@@ -604,7 +604,7 @@ def create_plots(
 
                     for i, (idx, peak_val) in enumerate(extrema):
                         c_id = cluster_assignments[i]
-                        color = _CLUSTER_COLORS[c_id % len(_CLUSTER_COLORS)]
+                        color = cluster_colors[c_id % len(cluster_colors)]
                         ts = previous_day_data["Timestamp"].iloc[idx]
                         hour_of_day = ts.hour + ts.minute / 60.0 + ts.second / 3600.0
                         ax_cluster.scatter(
@@ -620,7 +620,7 @@ def create_plots(
 
                     # Plot cluster centroids and labels.
                     for c_id, stats in cluster_stats.items():
-                        color = _CLUSTER_COLORS[c_id % len(_CLUSTER_COLORS)]
+                        color = cluster_colors[c_id % len(cluster_colors)]
                         c_label = cluster_label_map[c_id]
                         ax_cluster.scatter(
                             stats["mean_hour"],

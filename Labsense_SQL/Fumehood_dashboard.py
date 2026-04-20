@@ -331,12 +331,12 @@ def identify_distance_errors(df: pd.DataFrame) -> pd.Series:
         return False
 
     # Iterate through all readings
-    for i in range(len(distances)):
+    for i, dist_val in enumerate(distances):
         # Check if value is in excluded range
-        if is_in_excluded_range(distances[i]):
+        if is_in_excluded_range(dist_val):
             is_error.iloc[i] = True
         # If we find a negative value
-        elif distances[i] < 0:
+        elif dist_val < 0:
             # Mark the negative value as error
             is_error.iloc[i] = True
             # Mark the next 4 consecutive values as errors

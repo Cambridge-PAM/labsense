@@ -1,0 +1,44 @@
+[MESSAGES CONTROL]
+# Suppressed project-wide:
+# R0801  duplicate-code              intentional: shared constants dicts + similar dashboard structure
+# I1101  c-extension-no-member       pyodbc is a C extension; members exist at runtime
+# C0302  too-many-lines              large dashboard files are intentional
+# W1203  logging-fstring-interpolation  f-strings preferred for readability
+# C0415  import-outside-toplevel     matplotlib imported lazily inside functions
+# W0718  broad-exception-caught      intentional defensive programming in IO code
+# C0114  missing-module-docstring    utility scripts/modules do not require module docstrings
+# C0116  missing-function-docstring  utility functions do not require docstrings
+# R0914  too-many-locals             complex analytical/dashboard functions
+# R0912  too-many-branches           complex analytical functions
+# R0915  too-many-statements         complex analytical functions
+# R1702  too-many-nested-blocks      complex analytical functions
+# R0913  too-many-arguments          SQL helper functions need many parameters
+# R0917  too-many-positional-arguments  SQL helper functions
+disable=
+    duplicate-code,
+    c-extension-no-member,
+    too-many-lines,
+    logging-fstring-interpolation,
+    import-outside-toplevel,
+    broad-exception-caught,
+    missing-module-docstring,
+    missing-function-docstring,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements,
+    too-many-nested-blocks,
+    too-many-arguments,
+    too-many-positional-arguments,
+    wrong-import-order,
+    wrong-import-position,
+    consider-using-with,
+    redefined-outer-name,
+    unused-argument
+
+[FORMAT]
+max-line-length=250
+
+[BASIC]
+module-naming-style=any
+# Many scripts use descriptive snake_case module-level variables (not constants)
+const-naming-style=any

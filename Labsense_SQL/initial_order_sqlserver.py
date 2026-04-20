@@ -85,7 +85,7 @@ def main():
     # filter CAS-restricted list to columns of use ("Full Name", "Volume/Weight/Size", "Unit", "Number", "CAS Number", "Date ordered"), define as "chemlist_red"
     df = df.iloc[:, [0, 3, 4, 7, 8, 17]]
 
-    new_df = pd.DataFrame(
+    _new_df = pd.DataFrame(
         columns=["CAS Number", "Name", "Volume", "Timestamp"]
     )  # creating columns for data frame
 

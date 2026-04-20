@@ -1,16 +1,17 @@
 import datetime
 from urllib.request import urlopen
 import json
-import pyodbc
 import argparse
 import os
+import csv
 from pathlib import Path
 from dotenv import load_dotenv
-import csv
+import pyodbc
 
 # Load environment variables from Labsense_SQL/.env
 env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=env_path)
+repo_root = Path(__file__).resolve().parents[1]
 
 # Connection information - pull from environment variables with defaults
 sqlServerName = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE")
@@ -84,7 +85,7 @@ def insert_sql(datapoints):
 
         # Calculate interval energy by subtracting consecutive cumulative values
         for i in range(1, len(datapoints)):
-            prev_timestamp_ms, prev_cumulative = datapoints[i - 1]
+            _prev_timestamp_ms, prev_cumulative = datapoints[i - 1]
             curr_timestamp_ms, curr_cumulative = datapoints[i]
 
             if prev_cumulative is None or curr_cumulative is None:
@@ -117,7 +118,7 @@ def insert_sql(datapoints):
         return success_count, skip_count
 
     except pyodbc.Error as ex:
-        print(f"An error occurred in SQL Server:", ex)
+        print("An error occurred in SQL Server:", ex)
         return 0, 0
 
 
