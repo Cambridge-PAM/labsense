@@ -198,6 +198,14 @@ def calculate_idle_power(df_granular: pd.DataFrame) -> float:
     return avg_idle_power
 
 
+def get_previous_working_day(reference: Optional[datetime] = None):
+    """Return the most recent weekday before the reference timestamp."""
+    previous_day = (reference or datetime.now()).date() - timedelta(days=1)
+    while previous_day.weekday() >= 5:
+        previous_day -= timedelta(days=1)
+    return previous_day
+
+
 def create_plots(
     df: pd.DataFrame,
     plot_dir: Path,
@@ -404,14 +412,9 @@ def create_plots(
         plot_files["granular"] = granular_plot.name
         print(f"Created plot: {granular_plot}")
 
-        today_midnight = datetime.now().replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0,
-        )
-        previous_day_start = today_midnight - timedelta(days=1)
-        previous_day_end = today_midnight
+        previous_working_day = get_previous_working_day()
+        previous_day_start = datetime.combine(previous_working_day, datetime.min.time())
+        previous_day_end = previous_day_start + timedelta(days=1)
         previous_day_data = df_gran[
             (df_gran["Timestamp"] >= previous_day_start)
             & (df_gran["Timestamp"] < previous_day_end)
@@ -810,7 +813,7 @@ def create_html_dashboard(
         max_row = df.loc[df["Esum"].idxmax()]
         max_date = pd.to_datetime(max_row["Datestamp"]).strftime("%Y-%m-%d")
         total_days = len(df)
-        requested_previous_day = (datetime.now() - timedelta(days=1)).date()
+        requested_previous_day = get_previous_working_day()
         previous_day_date = requested_previous_day.strftime("%Y-%m-%d")
         previous_day_rows = df[df["Datestamp"].dt.date == requested_previous_day]
         if not previous_day_rows.empty:
@@ -818,8 +821,11 @@ def create_html_dashboard(
         else:
             previous_day_consumption = 0.0
 
+        prior_working_day = get_previous_working_day(
+            datetime.combine(requested_previous_day, datetime.min.time())
+        )
         prior_day_rows = df[
-            df["Datestamp"].dt.date == (requested_previous_day - timedelta(days=1))
+            df["Datestamp"].dt.date == prior_working_day
         ]
         if not prior_day_rows.empty and not previous_day_rows.empty:
             prior_day_consumption = float(prior_day_rows.iloc[0]["Esum"])
