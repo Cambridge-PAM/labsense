@@ -35,21 +35,17 @@ import pandas as pd
 import logging
 from typing import List, Tuple, Dict, Any, Optional
 
-# Load environment variables from .env file in the repository root
+# Load environment variables — Labsense_SQL/.env first, then repo root
 repo_root = Path(__file__).resolve().parents[1]
-env_path = repo_root / ".env"
-load_dotenv(dotenv_path=env_path)
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
+load_dotenv(dotenv_path=repo_root / ".env")
 
-# Connection information
-# Your SQL Server instance
-sqlServerName = "MSM-FPM-70203\\LABSENSE"
-# Your database
-databaseName = "labsense"
-# Use Windows authentication
-trusted_connection = "yes"
-# Encryption
-encryption_pref = "Optional"
-# Connection string information
+# Connection information (from Labsense_SQL/.env)
+sqlServerName = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE")
+databaseName = os.getenv("SQL_DATABASE", "labsense")
+trusted_connection = os.getenv("SQL_TRUSTED_CONNECTION", "yes")
+encryption_pref = os.getenv("SQL_ENCRYPTION", "Optional")
+# Connection string
 connection_string = (
     f"DRIVER={{ODBC Driver 18 for SQL Server}};"
     f"SERVER={sqlServerName};"

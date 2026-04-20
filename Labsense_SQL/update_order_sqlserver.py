@@ -1,17 +1,20 @@
+import os
 import pandas as pd
 from datetime import datetime, timedelta, date
 import pyodbc
+from pathlib import Path
+from dotenv import load_dotenv
 
-# Connection information
-# Your SQL Server instance
-sqlServerName = "MSM-FPM-70203\\LABSENSE"
-# Your database
-databaseName = "labsense"
-# Use Windows authentication
-trusted_connection = "yes"
-# Encryption
-encryption_pref = "Optional"
-# Connection string information
+# Load environment variables — Labsense_SQL/.env first, then repo root
+load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+# Connection information (from Labsense_SQL/.env)
+sqlServerName = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE")
+databaseName = os.getenv("SQL_DATABASE", "labsense")
+trusted_connection = os.getenv("SQL_TRUSTED_CONNECTION", "yes")
+encryption_pref = os.getenv("SQL_ENCRYPTION", "Optional")
+# Connection string
 connection_string = (
     f"DRIVER={{ODBC Driver 18 for SQL Server}};"
     f"SERVER={sqlServerName};"

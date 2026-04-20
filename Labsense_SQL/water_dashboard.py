@@ -12,9 +12,9 @@ from dotenv import load_dotenv
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# Load environment variables from .env file at repo root
-env_path = Path(__file__).resolve().parents[1] / ".env"
-load_dotenv(env_path)
+# Load environment variables — Labsense_SQL/.env first, then repo root
+load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 import pyodbc
 import pandas as pd
@@ -22,11 +22,11 @@ import argparse
 from datetime import datetime
 from typing import Optional, Dict, Tuple
 
-# SQL Server connection details
-SQL_SERVER_NAME = "MSM-FPM-70203\\LABSENSE"
-DATABASE_NAME = "labsense"
-TRUSTED_CONNECTION = "yes"
-ENCRYPTION_PREF = "Optional"
+# SQL Server connection details (from Labsense_SQL/.env)
+SQL_SERVER_NAME = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE")
+DATABASE_NAME = os.getenv("SQL_DATABASE", "labsense")
+TRUSTED_CONNECTION = os.getenv("SQL_TRUSTED_CONNECTION", "yes")
+ENCRYPTION_PREF = os.getenv("SQL_ENCRYPTION", "Optional")
 
 CONNECTION_STRING = (
     f"DRIVER={{ODBC Driver 18 for SQL Server}};"
