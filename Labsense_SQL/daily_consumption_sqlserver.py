@@ -7,9 +7,8 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from .env file in the repository root
-repo_root = Path(__file__).resolve().parents[1]
-env_path = repo_root / ".env"
+# Load environment variables from Labsense_SQL/.env
+env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # Connection information - pull from environment variables with defaults

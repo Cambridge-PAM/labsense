@@ -5,9 +5,8 @@ import pyodbc
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables — Labsense_SQL/.env first, then repo root
+# Load environment variables from Labsense_SQL/.env
 load_dotenv(Path(__file__).resolve().parent / ".env")
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 # Connection information (from Labsense_SQL/.env)
 sqlServerName = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE")

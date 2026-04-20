@@ -22,7 +22,6 @@ A laboratory IoT monitoring and analytics platform for chemistry lab environment
 | `Balance Comms/` | Scans a barcode, reads weight from a serial balance (Denver Instruments SI-2002), and updates ChemInventory via REST API |
 | `RaspberryPi-4/` | Scheduled scripts pushing sensor streams (electricity, fumehood, GHS, order/waste lists) to Azure IoT Hub |
 | `RaspberryPi-Pico/` | MicroPython firmware — WiFi, Azure IoT Hub connection, BME68x environmental sensor |
-| `Labsense_SQLite/` | Legacy local SQLite equivalents of the SQL Server scripts |
 | `Labsense_Excel/` | Legacy Excel-based order and waste update scripts using `openpyxl` |
 | `tests/` | `pytest` unit tests for core processing logic |
 | `plots/` | Generated HTML dashboards and matplotlib PNGs |
@@ -33,7 +32,7 @@ A laboratory IoT monitoring and analytics platform for chemistry lab environment
 Managed via Conda. Key packages:
 
 - **Data processing**: `pandas`, `numpy`, `matplotlib`
-- **Database**: `pyodbc` (SQL Server, ODBC Driver 18); `sqlite3` (legacy)
+- **Database**: `pyodbc` (SQL Server, ODBC Driver 18)
 - **Messaging**: `paho-mqtt`, Azure IoT Hub SDK
 - **APIs**: `requests`
 - **Spreadsheets**: `openpyxl`
@@ -54,7 +53,7 @@ conda activate labsense
 
 ## Configuration
 
-Create a `.env` file at the repository root:
+All SQL/processing scripts read configuration from `Labsense_SQL/.env`:
 
 ```env
 # EmonCMS API key (electricity/water consumption data)
@@ -62,11 +61,7 @@ EMONCMS_API_KEY=your_emoncms_api_key
 
 # Logging level
 LOG_LEVEL=INFO
-```
 
-SQL Server, ChemInventory, and MQTT settings are configured in `Labsense_SQL/.env`:
-
-```env
 # ChemInventory API token
 CHEMINVENTORY_CONNECTION_STRING=your_cheminventory_api_token
 
@@ -83,7 +78,7 @@ SQL_TRUSTED_CONNECTION=yes
 SQL_ENCRYPTION=Optional
 ```
 
-Sensor scripts on the Raspberry Pi use a separate `.env` in their own directory (e.g. `Labsense_Sensors/.env`) for I2C addresses, sensor thresholds, and retry settings.
+Sensor scripts on the Raspberry Pi use `Labsense_Sensors/.env` for I2C addresses, sensor thresholds, and retry settings.
 
 ## Running the Dashboards
 

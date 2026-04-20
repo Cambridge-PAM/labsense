@@ -9,6 +9,13 @@ from dotenv import load_dotenv
 import logging
 from typing import Optional, Dict, Any
 
+# Load environment variables from Labsense_SQL/.env
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    print(f"Warning: .env file not found at {env_path}. Using default configuration.")
+
 # Configure logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 log_file = Path(__file__).parent / "subscriber_sqlserver.log"
@@ -25,14 +32,7 @@ logging.basicConfig(
     handlers=handlers,
 )
 logger = logging.getLogger(__name__)
-
-# Load environment variables from .env file
-env_path = Path(__file__).parent.parent / ".env"
-if env_path.exists():
-    load_dotenv(dotenv_path=env_path)
-    logger.info("Loaded environment variables from .env")
-else:
-    logger.warning(f".env file not found at {env_path}. Using default configuration.")
+logger.info("Loaded environment variables from %s", env_path)
 
 # MQTT Configuration
 MQTT_SERVER = os.getenv("MQTT_SERVER", "10.253.179.46").strip()

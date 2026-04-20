@@ -35,10 +35,9 @@ import pandas as pd
 import logging
 from typing import List, Tuple, Dict, Any, Optional
 
-# Load environment variables — Labsense_SQL/.env first, then repo root
-repo_root = Path(__file__).resolve().parents[1]
+# Load environment variables from Labsense_SQL/.env
 load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
-load_dotenv(dotenv_path=repo_root / ".env")
+repo_root = Path(__file__).resolve().parents[1]
 
 # Connection information (from Labsense_SQL/.env)
 sqlServerName = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE")

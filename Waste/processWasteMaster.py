@@ -18,14 +18,9 @@ import pandas as pd
 import sys
 import os
 from typing import Optional
-from dotenv import load_dotenv
 
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-# Load environment variables from .env file at repo root
-env_path = Path(__file__).resolve().parents[1] / ".env"
-load_dotenv(env_path)
 
 # Unit conversion mapping to litres (centralized)
 from Labsense_SQL.constants import to_litre

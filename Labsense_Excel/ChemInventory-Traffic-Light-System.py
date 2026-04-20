@@ -24,9 +24,9 @@ import os
 from dotenv import load_dotenv
 import datetime
 
-# Load environment variables from .env file in the repository root
+# Load environment variables from Labsense_SQL/.env
 repo_root = Path(__file__).resolve().parents[1]
-env_path = repo_root / ".env"
+env_path = repo_root / "Labsense_SQL" / ".env"
 load_dotenv(dotenv_path=env_path)
 import requests as req
 import pandas as pd
@@ -189,9 +189,6 @@ air_green_list = []
 health_red_list = []
 health_yellow_list = []
 health_green_list = []
-
-load_dotenv()  # for getting the CHEMINVENTORY_CONNECTION_STRING, add the conncetion string in the .env file. If it doesn't exist, jus create one in the folder
-
 
 def main():
     # Do ChemInventory processing

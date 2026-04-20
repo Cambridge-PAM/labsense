@@ -13,9 +13,8 @@ from dotenv import load_dotenv
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# Load environment variables — Labsense_SQL/.env first, then repo root
+# Load environment variables from Labsense_SQL/.env
 load_dotenv(Path(__file__).resolve().parent / ".env")
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 import pyodbc
 import pandas as pd

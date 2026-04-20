@@ -9,9 +9,8 @@ from dotenv import load_dotenv
 
 url = "http://10.247.40.36/feed/fetch.json?ids=20,21&apikey=APIKEY"  # details about how url is formed can be found here https://emoncms.org/site/api#feed ,add your own APIKEY
 
-# Load environment variables — Labsense_SQL/.env first, then repo root
+# Load environment variables from Labsense_SQL/.env
 load_dotenv(Path(__file__).resolve().parent / ".env")
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 # Connection information (from Labsense_SQL/.env)
 sqlServerName = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE")
