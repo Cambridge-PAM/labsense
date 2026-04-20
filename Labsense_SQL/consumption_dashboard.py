@@ -16,6 +16,11 @@ from dotenv import load_dotenv
 import pyodbc
 import pandas as pd
 
+try:
+    from Labsense_SQL.presence_utils import get_room_light_presence_data
+except ModuleNotFoundError:
+    from presence_utils import get_room_light_presence_data
+
 # =============================================================================
 # CONFIGURATION TOGGLE
 # =============================================================================
@@ -111,6 +116,52 @@ def fetch_granular_data(connection_string: str, days: int = 7) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def fetch_fumehood_light_data(
+    connection_string: str, lab_id: int, sublab_id: int, days: int = 7
+) -> pd.DataFrame:
+    """Fetch fumehood light readings for a specific lab/sublab over N days."""
+    try:
+        connection = pyodbc.connect(connection_string)
+        query = """
+            SELECT Light, Timestamp
+            FROM dbo.fumehood
+            WHERE LabId = ?
+              AND SubLabId = ?
+              AND Timestamp >= DATEADD(day, -?, GETDATE())
+            ORDER BY Timestamp ASC
+        """
+        df = pd.read_sql(query, connection, params=[lab_id, sublab_id, days])
+        connection.close()
+
+        if not df.empty:
+            df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+
+        return df
+    except pyodbc.Error as ex:
+        print(f"Error fetching fumehood light data: {ex}")
+        return pd.DataFrame()
+
+
+def align_presence_to_timestamps(
+    target_df: pd.DataFrame, presence_df: Optional[pd.DataFrame]
+) -> pd.Series:
+    """Align room-presence states to target timestamps using as-of merge."""
+    if target_df.empty or presence_df is None or presence_df.empty:
+        return pd.Series([0] * len(target_df), index=target_df.index, dtype="int64")
+
+    aligned = pd.merge_asof(
+        target_df[["Timestamp"]].sort_values(by=["Timestamp"]),  # type: ignore[call-overload]
+        presence_df[["Timestamp", "Presence"]].sort_values(by=["Timestamp"]),  # type: ignore[call-overload]
+        on="Timestamp",
+        direction="backward",
+        tolerance=pd.Timedelta(minutes=30),
+    )
+    aligned["Presence"] = aligned["Presence"].fillna(0).astype(int)
+    return pd.Series(
+        aligned["Presence"].to_numpy(), index=target_df.index, dtype="int64"
+    )
+
+
 def calculate_idle_power(df_granular: pd.DataFrame) -> float:
     """Calculate idle power consumption from 1am-5am data.
 
@@ -152,6 +203,7 @@ def create_plots(
     plot_dir: Path,
     df_granular: Optional[pd.DataFrame] = None,
     idle_power_kw: float = 0.0,
+    presence_df: Optional[pd.DataFrame] = None,
 ):
     """Create visualization plots for electricity consumption data.
 
@@ -198,7 +250,7 @@ def create_plots(
         return {}
 
     # Sort by date for plotting
-    df_sorted = df_last_year.sort_values("Datestamp")
+    df_sorted = df_last_year.sort_values(by=["Datestamp"])  # type: ignore[call-overload]
     df_sorted["Esum_7d_ma"] = df_sorted["Esum"].rolling(window=7, min_periods=1).mean()
 
     # Create daily consumption trend plot (last year only)
@@ -366,6 +418,9 @@ def create_plots(
         ].copy()
         if not previous_day_data.empty:
             previous_day_data = previous_day_data.sort_values(by=["Timestamp"]).copy()
+            previous_day_data["Presence"] = align_presence_to_timestamps(
+                previous_day_data, presence_df
+            )
             # Rolling 5-minute net change: sum minute-to-minute active-power deltas.
             prev_day_idx = previous_day_data.set_index("Timestamp")
             prev_day_idx["Active_Power_Delta_5min_kW"] = (
@@ -507,18 +562,47 @@ def create_plots(
                         extrema.append((idx, float(smoothed_vals[idx])))
 
                 # Cluster extrema with DBSCAN using |delta| only (no time binning).
-                # This ties +/− events of similar magnitude to the same equipment.
-                dbscan_eps = noise_threshold * 0.33
+                # This ties +/− events of similar magnitude and room-presence state.
+                base_abs_eps = noise_threshold * 0.33
+                dbscan_eps = 0.0
                 cluster_assignments = {}  # extrema list index -> global cluster id
-                cluster_stats = {}  # global cluster id -> {mean_abs, mean_hour}
+                cluster_stats = {}  # global cluster id -> {mean_abs, mean_presence}
                 next_cluster_id = 0
 
-                if dbscan_cls is not None and dbscan_eps > 0 and extrema:
-                    abs_values = [[abs(val)] for _, val in extrema]
+                if dbscan_cls is not None and base_abs_eps > 0 and extrema:
+                    abs_values = [abs(val) for _, val in extrema]
+                    presence_values = [
+                        int(previous_day_data["Presence"].iloc[idx])
+                        for idx, _ in extrema
+                    ]
+
+                    abs_series = pd.Series(abs_values, dtype="float64")
+                    abs_std = float(abs_series.std(ddof=0))
+                    abs_mean = float(abs_series.mean())
+                    if abs_std <= 0:
+                        abs_std = 1.0
+
+                    presence_series = pd.Series(presence_values, dtype="float64")
+                    presence_std = float(presence_series.std(ddof=0))
+                    presence_mean = float(presence_series.mean())
+                    if presence_std <= 0:
+                        presence_std = 1.0
+
+                    presence_weight = 0.6
+                    feature_matrix = [
+                        [
+                            (abs_val - abs_mean) / abs_std,
+                            presence_weight
+                            * ((presence_val - presence_mean) / presence_std),
+                        ]
+                        for abs_val, presence_val in zip(abs_values, presence_values)
+                    ]
+
+                    dbscan_eps = max(0.4, base_abs_eps / abs_std)
                     dbscan_labels = dbscan_cls(
                         eps=dbscan_eps,
                         min_samples=3,
-                    ).fit_predict(abs_values)
+                    ).fit_predict(feature_matrix)
 
                     for label in sorted(set(dbscan_labels)):
                         member_indices = [
@@ -529,17 +613,13 @@ def create_plots(
                         mean_abs = sum(
                             abs(extrema[m][1]) for m in member_indices
                         ) / len(member_indices)
-                        mean_hour = sum(
-                            previous_day_data["Timestamp"].iloc[extrema[m][0]].hour
-                            + previous_day_data["Timestamp"].iloc[extrema[m][0]].minute
-                            / 60.0
-                            + previous_day_data["Timestamp"].iloc[extrema[m][0]].second
-                            / 3600.0
+                        mean_presence = sum(
+                            int(previous_day_data["Presence"].iloc[extrema[m][0]])
                             for m in member_indices
                         ) / len(member_indices)
                         cluster_stats[next_cluster_id] = {
                             "mean_abs": mean_abs,
-                            "mean_hour": mean_hour,
+                            "mean_presence": mean_presence,
                         }
                         for m in member_indices:
                             cluster_assignments[m] = next_cluster_id
@@ -547,13 +627,12 @@ def create_plots(
                 else:
                     # Fallback when DBSCAN isn't available: keep each extrema as its own cluster.
                     for i, (idx, val) in enumerate(extrema):
-                        ts = previous_day_data["Timestamp"].iloc[idx]
                         cluster_assignments[i] = next_cluster_id
                         cluster_stats[next_cluster_id] = {
                             "mean_abs": abs(float(val)),
-                            "mean_hour": ts.hour
-                            + ts.minute / 60.0
-                            + ts.second / 3600.0,
+                            "mean_presence": float(
+                                int(previous_day_data["Presence"].iloc[idx])
+                            ),
                         }
                         next_cluster_id += 1
 
@@ -598,17 +677,20 @@ def create_plots(
                         },
                     )
 
-                # Show DBSCAN grouping in hour-bin vs |delta| space.
+                # Show DBSCAN grouping in presence vs |delta| space.
                 if extrema and cluster_stats:
                     fig_cluster, ax_cluster = plt.subplots(figsize=(10, 4.5))
 
                     for i, (idx, peak_val) in enumerate(extrema):
                         c_id = cluster_assignments[i]
                         color = cluster_colors[c_id % len(cluster_colors)]
-                        ts = previous_day_data["Timestamp"].iloc[idx]
-                        hour_of_day = ts.hour + ts.minute / 60.0 + ts.second / 3600.0
+                        presence_value = int(previous_day_data["Presence"].iloc[idx])
+                        if peak_val >= 0:
+                            jitter = 0.05
+                        else:
+                            jitter = -0.05
                         ax_cluster.scatter(
-                            hour_of_day,
+                            presence_value + jitter,
                             abs(peak_val),
                             color=color,
                             alpha=0.85,
@@ -623,7 +705,7 @@ def create_plots(
                         color = cluster_colors[c_id % len(cluster_colors)]
                         c_label = cluster_label_map[c_id]
                         ax_cluster.scatter(
-                            stats["mean_hour"],
+                            stats["mean_presence"],
                             stats["mean_abs"],
                             color=color,
                             marker="D",
@@ -634,7 +716,7 @@ def create_plots(
                         )
                         ax_cluster.annotate(
                             c_label,
-                            xy=(stats["mean_hour"], stats["mean_abs"]),
+                            xy=(stats["mean_presence"], stats["mean_abs"]),
                             xytext=(0, 7),
                             textcoords="offset points",
                             ha="center",
@@ -651,26 +733,28 @@ def create_plots(
 
                     ax_cluster.set_title(
                         (
-                            "DBSCAN Clusters: Hour-of-Day vs |Delta| "
-                            f"(eps={dbscan_eps:.3f} kW)"
+                            "DBSCAN Clusters: Presence vs |Delta| "
+                            f"(eps={dbscan_eps:.3f}, scaled features)"
                         ),
                         fontsize=12,
                         fontweight="bold",
                     )
-                    ax_cluster.set_xlabel("Hour of Day")
+                    ax_cluster.set_xlabel("Lab Presence (0=Off, 1=On)")
                     ax_cluster.set_ylabel("|Delta| (kW over last 5 min)")
-                    ax_cluster.set_xlim(-0.5, 23.5)
-                    ax_cluster.set_xticks(range(0, 24, 2))
+                    ax_cluster.set_xlim(-0.4, 1.4)
+                    ax_cluster.set_xticks([0, 1])
                     ax_cluster.grid(True, alpha=0.3)
 
                     cluster_plot = (
                         plot_dir
-                        / "electricity_consumption_previous_day_cluster_hour_delta.png"
+                        / "electricity_consumption_previous_day_cluster_presence_delta.png"
                     )
                     fig_cluster.tight_layout()
                     fig_cluster.savefig(cluster_plot, dpi=150, bbox_inches="tight")
                     plt.close(fig_cluster)
-                    plot_files["previous_day_cluster_hour_delta"] = cluster_plot.name
+                    plot_files["previous_day_cluster_presence_delta"] = (
+                        cluster_plot.name
+                    )
                     print(f"Created plot: {cluster_plot}")
             ax_delta.set_ylabel("Delta (kW over last 5 min)", fontsize=11)
             ax_delta.set_xlabel("Time", fontsize=12)
@@ -906,11 +990,11 @@ def create_html_dashboard(
                 f'      <img src="{plot_files["previous_day"]}" alt="Previous day power consumption" />',
             ]
 
-            if "previous_day_cluster_hour_delta" in plot_files:
+            if "previous_day_cluster_presence_delta" in plot_files:
                 html_lines += [
-                    "      <h3>Hour-of-Day vs Delta Clusters</h3>",
-                    "      <p><em>Points are local extrema above the noise threshold. Up/down markers indicate positive/negative deltas; color and label indicate DBSCAN clusters based on delta magnitude only.</em></p>",
-                    f'      <img src="{plot_files["previous_day_cluster_hour_delta"]}" alt="Hour of day vs delta DBSCAN clusters" />',
+                    "      <h3>Presence vs Delta Clusters</h3>",
+                    "      <p><em>Points are local extrema above the noise threshold. Up/down markers indicate positive/negative deltas; color and label indicate DBSCAN clusters built from both delta magnitude and lab presence.</em></p>",
+                    f'      <img src="{plot_files["previous_day_cluster_presence_delta"]}" alt="Presence vs delta DBSCAN clusters" />',
                 ]
 
             html_lines += [
@@ -1061,6 +1145,24 @@ def main():
         "--connection-string",
         help="Custom SQL connection string (optional)",
     )
+    parser.add_argument(
+        "--presence-lab-id",
+        type=int,
+        default=1,
+        help="LabId for room-light presence source (default: 1)",
+    )
+    parser.add_argument(
+        "--presence-sublab-id",
+        type=int,
+        default=3,
+        help="SubLabId for room-light presence source (default: 3)",
+    )
+    parser.add_argument(
+        "--presence-days",
+        type=int,
+        default=7,
+        help="Days of fumehood light data to fetch for presence alignment (default: 7)",
+    )
 
     args = parser.parse_args()
 
@@ -1083,6 +1185,28 @@ def main():
     df_granular = fetch_granular_data(connection_string, days=7)
     print(f"Found {len(df_granular)} minute-level records")
 
+    print(
+        "Fetching fumehood light data for presence "
+        f"(LabId={args.presence_lab_id}, SubLabId={args.presence_sublab_id})..."
+    )
+    light_df = fetch_fumehood_light_data(
+        connection_string,
+        lab_id=args.presence_lab_id,
+        sublab_id=args.presence_sublab_id,
+        days=args.presence_days,
+    )
+    presence_df = get_room_light_presence_data(
+        light_df,
+        lab_id=args.presence_lab_id,
+        sublab_id=args.presence_sublab_id,
+    )
+    if presence_df is None:
+        print(
+            "Presence threshold not configured or no light data available; using 0 presence fallback."
+        )
+    else:
+        print(f"Found {len(presence_df)} presence-aligned light records")
+
     # Calculate idle power if enabled
     idle_power_kw = 0.0
     if CALCULATE_IDLE_POWER and not df_granular.empty:
@@ -1090,7 +1214,7 @@ def main():
         idle_power_kw = calculate_idle_power(df_granular)
 
     print("Creating plots...")
-    plot_files = create_plots(df, plot_dir, df_granular, idle_power_kw)
+    plot_files = create_plots(df, plot_dir, df_granular, idle_power_kw, presence_df)
 
     print("Creating HTML dashboard...")
     out_file = Path(args.out) if args.out else None

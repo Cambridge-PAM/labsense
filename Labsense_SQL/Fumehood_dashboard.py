@@ -19,6 +19,11 @@ from dotenv import load_dotenv
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from Labsense_SQL.presence_utils import (
+    get_light_threshold,
+    get_room_light_presence_data,
+)
+
 # Load environment variables from Labsense_SQL/.env
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -46,13 +51,6 @@ SASH_OPEN_THRESHOLD_PERCENT = 5.0
 # Distance values for sash fully closed (0% open) and fully open (100% open)
 FUMEHOOD_CALIBRATION = {
     (1, 3): {"fully_closed_mm": 765, "fully_open_mm": 100},
-}
-
-# Light threshold configuration: {(lab_id, sublab_id): {"light_on_threshold_lux": lux, "room_light_on_threshold_lux": lux}}
-# Light level above light_on_threshold indicates the fumehood light is on
-# Light level above room_light_on_threshold indicates the room lights are on
-LIGHT_THRESHOLDS = {
-    (1, 3): {"light_on_threshold_lux": 80, "room_light_on_threshold_lux": 18},
 }
 
 # Excluded distance values: {(lab_id, sublab_id): [{"min": mm, "max": mm}, ...]}
@@ -128,31 +126,6 @@ def is_light_on(light_level: float, lab_id: int, sublab_id: int) -> Optional[boo
         return None
 
     return light_level > threshold
-
-
-def get_room_light_presence_data(
-    light_df: pd.DataFrame, lab_id: int, sublab_id: int
-) -> Optional[pd.DataFrame]:
-    """Prepare room light presence data using the configured room-light threshold.
-
-    Presence is considered on when light exceeds room_light_on_threshold_lux.
-
-    Args:
-        light_df: DataFrame with Timestamp and Light columns
-        lab_id: Laboratory ID
-        sublab_id: Sublaboratory/Fumehood ID
-
-    Returns:
-        Sorted DataFrame with a Presence column containing 1 or 0, or None if
-        no room-light threshold is configured.
-    """
-    threshold = get_light_threshold(lab_id, sublab_id, "room_light_on_threshold_lux")
-    if threshold is None or light_df.empty:
-        return None
-
-    light_sorted = light_df.sort_values("Timestamp").reset_index(drop=True).copy()
-    light_sorted["Presence"] = (light_sorted["Light"] > threshold).astype(int)
-    return light_sorted
 
 
 def _presence_segment_ids(
@@ -344,19 +317,6 @@ def identify_distance_errors(df: pd.DataFrame) -> pd.Series:
                 is_error.iloc[j] = True
 
     return is_error
-
-
-def get_light_threshold(lab_id: int, sublab_id: int, key: str) -> Optional[float]:
-    """Fetch a configured light threshold for a fumehood, if present."""
-    thresholds = LIGHT_THRESHOLDS.get((lab_id, sublab_id))
-    if thresholds is None:
-        return None
-
-    value = thresholds.get(key)
-    if value is None:
-        return None
-
-    return float(value)
 
 
 def latest_value_with_fallback(
