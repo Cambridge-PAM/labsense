@@ -1,10 +1,10 @@
 import asyncio
 import time
-import schedule
+import schedule  # pylint: disable=import-error
 import numpy as np
 import threading
 from datetime import datetime
-import RPi.GPIO as GPIO
+import RPi.GPIO as GPIO  # pylint: disable=import-error
 import paho.mqtt.publish as publish
 import os
 import sys

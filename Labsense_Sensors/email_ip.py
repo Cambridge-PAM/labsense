@@ -1,17 +1,20 @@
+"""Send Raspberry Pi network IP details via email with basic retry logic."""
+
 import smtplib
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email import encoders
+from email.mime.text import MIMEText
+import logging
+import os
 import socket
 import subprocess
-import time
 import sys
-import os
+import time
 from pathlib import Path
+from typing import Optional
+
 from dotenv import load_dotenv
-import logging
-from typing import Optional, Tuple
+
+# pylint: disable=broad-exception-caught,subprocess-run-check,logging-fstring-interpolation,too-many-return-statements
 
 # Configure logging
 # Use local log file in script directory to avoid permission issues
@@ -44,7 +47,7 @@ email_password = os.getenv("EMAIL_PASSWORD", "").strip()
 email_send = os.getenv("EMAIL_SEND", "").strip()
 smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com").strip()
 smtp_port = int(os.getenv("SMTP_PORT", "587"))
-subject = "IP address update"
+SUBJECT = "IP address update"
 
 # WiFi Configuration
 WIFI_SSID = os.getenv("WIFI_SSID", "").strip()
@@ -269,7 +272,7 @@ def send_ip_email(
             msg = MIMEMultipart()
             msg["From"] = email_user
             msg["To"] = email_send
-            msg["Subject"] = subject
+            msg["Subject"] = SUBJECT
 
             message = f"""Raspberry Pi Connected!
 

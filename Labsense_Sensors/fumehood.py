@@ -6,17 +6,18 @@ only when recovery fails.
 """
 
 import asyncio
-import time
-import sys
-import signal
-import statistics
-from datetime import datetime
-import paho.mqtt.publish as publish
-import subprocess
-from pathlib import Path
 import logging
 from logging.handlers import TimedRotatingFileHandler
+from datetime import datetime
+from pathlib import Path
+import signal
+import statistics
+import subprocess
+import sys
+import time
 from typing import Any, Optional
+
+from paho.mqtt import publish
 from fumehood_helpers import (
     close_distance_sensor_instance,
     close_light_sensor_instance,
@@ -570,10 +571,7 @@ def attempt_sensor_recovery(
             RECOVERY_FAILURE_BACKOFF_SECONDS,
         )
 
-    if (
-        RECOVERY_CIRCUIT_BREAKER_THRESHOLD > 0
-        and len(recovery_failure_timestamps) >= RECOVERY_CIRCUIT_BREAKER_THRESHOLD
-    ):
+    if 0 < RECOVERY_CIRCUIT_BREAKER_THRESHOLD <= len(recovery_failure_timestamps):
         logger.critical(
             "Recovery circuit breaker opened after %s failed recoveries in %ss",
             len(recovery_failure_timestamps),
@@ -589,7 +587,7 @@ def attempt_sensor_recovery(
     return False, next_backoff_until
 
 
-async def main():
+async def main():  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """Main monitoring loop with error handling"""
     logger.info("Starting fumehood monitoring main loop")
 
@@ -688,11 +686,7 @@ async def main():
                     consecutive_light_read_errors,
                     LIGHT_READ_ERROR_REINIT_THRESHOLD,
                 )
-                if (
-                    LIGHT_READ_ERROR_REINIT_THRESHOLD > 0
-                    and consecutive_light_read_errors
-                    >= LIGHT_READ_ERROR_REINIT_THRESHOLD
-                ):
+                if 0 < LIGHT_READ_ERROR_REINIT_THRESHOLD <= consecutive_light_read_errors:
                     recovered, should_break = trigger_recovery(
                         "repeated light sensor read failures",
                         reset_zero_light=True,
@@ -764,10 +758,7 @@ async def main():
                     consecutive_identical_light,
                     IDENTICAL_LIGHT_REINIT_THRESHOLD,
                 )
-                if (
-                    IDENTICAL_LIGHT_REINIT_THRESHOLD > 0
-                    and consecutive_identical_light >= IDENTICAL_LIGHT_REINIT_THRESHOLD
-                ):
+                if 0 < IDENTICAL_LIGHT_REINIT_THRESHOLD <= consecutive_identical_light:
                     logger.warning(
                         "Reinitializing sensors due to %s identical light readings: %s lux",
                         consecutive_identical_light,

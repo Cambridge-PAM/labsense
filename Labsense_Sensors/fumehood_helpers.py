@@ -27,6 +27,8 @@ def _env_bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class DistanceRetrySettings:
+    """Retry and warmup settings for distance sensor reads."""
+
     sample_count: int
     sample_delay_seconds: float
     zero_retry_count: int
@@ -36,7 +38,9 @@ class DistanceRetrySettings:
 
 
 @dataclass(frozen=True)
-class LightRetrySettings:
+class LightRetrySettings:  # pylint: disable=too-many-instance-attributes
+    """Retry and warmup settings for ambient light sensor reads."""
+
     sample_count: int
     sample_delay_seconds: float
     zero_retry_count: int
@@ -48,7 +52,9 @@ class LightRetrySettings:
 
 
 @dataclass(frozen=True)
-class RecoverySettings:
+class RecoverySettings:  # pylint: disable=too-many-instance-attributes
+    """Error recovery thresholds and circuit-breaker behavior."""
+
     light_read_error_reinit_threshold: int
     proactive_reinit_interval_seconds: int
     zero_distance_reboot_threshold: int
@@ -61,7 +67,9 @@ class RecoverySettings:
 
 
 @dataclass(frozen=True)
-class FumehoodSettings:
+class FumehoodSettings:  # pylint: disable=too-many-instance-attributes
+    """All runtime configuration values for fumehood monitoring."""
+
     log_retention_days: int
     log_rotate_when: str
     mqtt_server: str
