@@ -1,11 +1,21 @@
 """Fetch ChemInventory data via the ChemInventory API and insert normalised volumes into SQL Server."""
+
+import argparse
+import datetime
 import json
+import logging
+import os
 import sys
 from pathlib import Path
-import argparse
+from typing import List, Tuple, Dict, Any, Optional
+
+from dotenv import load_dotenv
+import pandas as pd
+import requests as req
 
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# pylint: disable=wrong-import-position
 from Labsense_SQL.gsk_enviro_dict_temp import (
     gsk_composite_red,
     gsk_composite_yellow,
@@ -28,13 +38,8 @@ from Labsense_SQL.gsk_enviro_dict_temp import (
 )
 from Labsense_SQL.constants import to_litre, gsk_2016
 from Labsense_SQL.sql_helpers import maybe_insert
-import os
-from dotenv import load_dotenv
-import datetime
-import requests as req
-import pandas as pd
-import logging
-from typing import List, Tuple, Dict, Any, Optional
+
+# pylint: enable=wrong-import-position
 
 # Load environment variables from Labsense_SQL/.env
 load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")

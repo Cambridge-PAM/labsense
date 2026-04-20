@@ -1,4 +1,5 @@
 """Tests that missing required environment variables raise appropriate errors."""
+
 from Labsense_SQL import ChemInventory_sqlserver as cis
 import os
 

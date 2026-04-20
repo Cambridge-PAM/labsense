@@ -1,4 +1,5 @@
 """Poll the EmonCMS API for live power and cumulative energy readings and insert them into SQL Server."""
+
 from urllib.request import urlopen
 import json
 import os

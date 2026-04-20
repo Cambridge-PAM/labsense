@@ -1,4 +1,5 @@
 """MQTT subscriber that listens for sensor messages and writes readings to SQL Server."""
+
 import paho.mqtt.client as mqtt
 import json
 import pyodbc

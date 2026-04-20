@@ -1,4 +1,5 @@
 """Tests for the main ChemInventory data processing pipeline."""
+
 import types
 from Labsense_SQL import ChemInventory_sqlserver as cis
 

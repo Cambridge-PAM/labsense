@@ -1,4 +1,5 @@
 """Schedule and process waste master spreadsheet data, calculating volumes per chemical."""
+
 import pandas as pd
 from datetime import datetime, timedelta, date
 

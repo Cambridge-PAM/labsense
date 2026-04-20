@@ -1,4 +1,5 @@
 """Raspberry Pi water-flow monitor for two taps: samples GPIO pulse counts and publishes readings via MQTT."""
+
 import asyncio
 import time
 import schedule  # pylint: disable=import-error

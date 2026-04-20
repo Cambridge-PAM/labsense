@@ -1,4 +1,5 @@
 """Fetch daily electricity consumption from EmonCMS and insert into the SQL Server elecDaily table."""
+
 import datetime
 from urllib.request import urlopen
 import json

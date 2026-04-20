@@ -1,9 +1,13 @@
 """Read an initial waste spreadsheet and insert waste volume records into SQL Server."""
+
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 import pandas as pd
 import pyodbc
-from pathlib import Path
-from dotenv import load_dotenv
+
+from Labsense_SQL.constants import to_litre
 
 # Load environment variables from Labsense_SQL/.env
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -21,10 +25,6 @@ connection_string = (
     f"Trusted_Connection={trusted_connection};"
     f"Encrypt={encryption_pref}"
 )
-
-from Labsense_SQL.constants import to_litre
-
-# `to_litre` moved to `Labsense_SQL.constants` to avoid duplication.
 
 
 def insert_sql(hp, volume, datestamp):

@@ -4,13 +4,6 @@ Queries the labsense SQL Server database for daily and minute-level electricity
 consumption data and creates visualizations and an HTML dashboard.
 """
 
-# =============================================================================
-# CONFIGURATION TOGGLE
-# =============================================================================
-# Set to True to calculate idle power from 1am-5am consumption and show active consumption
-CALCULATE_IDLE_POWER = True
-# =============================================================================
-
 import argparse
 import importlib
 import os
@@ -22,6 +15,13 @@ from dotenv import load_dotenv
 
 import pyodbc
 import pandas as pd
+
+# =============================================================================
+# CONFIGURATION TOGGLE
+# =============================================================================
+# Set to True to calculate idle power from 1am-5am consumption and show active consumption
+CALCULATE_IDLE_POWER = True
+# =============================================================================
 
 # Load environment variables from Labsense_SQL/.env
 load_dotenv(Path(__file__).resolve().parent / ".env")

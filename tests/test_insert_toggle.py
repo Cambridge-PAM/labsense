@@ -1,4 +1,5 @@
 """Tests for the INSERT_TO_SQL environment variable toggle in ChemInventory_sqlserver."""
+
 import os
 from Labsense_SQL import ChemInventory_sqlserver as cis
 from Labsense_SQL import sql_helpers as sh

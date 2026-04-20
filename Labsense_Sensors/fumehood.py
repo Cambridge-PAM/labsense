@@ -686,7 +686,11 @@ async def main():  # pylint: disable=too-many-locals,too-many-branches,too-many-
                     consecutive_light_read_errors,
                     LIGHT_READ_ERROR_REINIT_THRESHOLD,
                 )
-                if 0 < LIGHT_READ_ERROR_REINIT_THRESHOLD <= consecutive_light_read_errors:
+                if (
+                    0
+                    < LIGHT_READ_ERROR_REINIT_THRESHOLD
+                    <= consecutive_light_read_errors
+                ):
                     recovered, should_break = trigger_recovery(
                         "repeated light sensor read failures",
                         reset_zero_light=True,

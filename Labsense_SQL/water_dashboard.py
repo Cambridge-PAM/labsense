@@ -4,22 +4,24 @@ Queries the labsense SQL Server database for water sensor data
 grouped by laboratory and sublaboratory (sinks), and creates visualizations and an HTML dashboard.
 """
 
-import sys
+import argparse
 import os
+import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Optional, Dict, Tuple
+
 from dotenv import load_dotenv
+import pandas as pd
+import pyodbc
 
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# pylint: disable=wrong-import-position
 
 # Load environment variables from Labsense_SQL/.env
 load_dotenv(Path(__file__).resolve().parent / ".env")
-
-import pyodbc
-import pandas as pd
-import argparse
-from datetime import datetime
-from typing import Optional, Dict, Tuple
+# pylint: enable=wrong-import-position
 
 # SQL Server connection details (from Labsense_SQL/.env)
 SQL_SERVER_NAME = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE")

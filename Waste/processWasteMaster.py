@@ -12,20 +12,19 @@ is allocated to multiple HP codes (because it exhibits multiple hazardous proper
 allocation breakdown charts show the proportions, while total charts show the true volume received.
 """
 
-from pathlib import Path
 import argparse
-import pandas as pd
-import sys
 import os
+import sys
+from pathlib import Path
 from typing import Optional
+
+import pandas as pd
 
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # Unit conversion mapping to litres (centralized)
-from Labsense_SQL.constants import to_litre
-
-# `to_litre` moved to `Labsense_SQL.constants` to avoid duplication.
+from Labsense_SQL.constants import to_litre  # pylint: disable=wrong-import-position
 
 
 DEFAULT_PATH = Path(r"Z:\\LabsenseDashboard\\Waste Master.xlsx")

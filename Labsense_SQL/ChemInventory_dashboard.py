@@ -5,23 +5,21 @@ different environmental categories (Composite, Incineration, VOC, Aquatic, Air, 
 and creates visualizations and an HTML dashboard.
 """
 
-import sys
+import argparse
 import os
+import sys
+from datetime import datetime
+from html import escape
 from pathlib import Path
+from typing import Optional, Dict
+
 from dotenv import load_dotenv
+import pandas as pd
+import pyodbc
 
 # Add repository root to sys.path to allow absolute imports when running this file directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-# Load environment variables from Labsense_SQL/.env
-load_dotenv(Path(__file__).resolve().parent / ".env")
-
-import pyodbc
-import pandas as pd
-import argparse
-from datetime import datetime
-from typing import Optional, Dict
-from html import escape
+# pylint: disable=wrong-import-position
 from Labsense_SQL.ChemInventory_sqlserver import get_red_category_chemical_volumes
 from Labsense_SQL.gsk_enviro_dict_temp import (
     gsk_composite_red,
@@ -38,7 +36,10 @@ from Labsense_SQL.gsk_enviro_dict_temp import (
     gsk_health_green,
 )
 
-# SQL Server connection details (from Labsense_SQL/.env)
+# pylint: enable=wrong-import-position
+
+# Load environment variables from Labsense_SQL/.env
+load_dotenv(Path(__file__).resolve().parent / ".env")
 SQL_SERVER_NAME = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE")
 DATABASE_NAME = os.getenv("SQL_DATABASE", "labsense")
 TRUSTED_CONNECTION = os.getenv("SQL_TRUSTED_CONNECTION", "yes")
