@@ -424,16 +424,16 @@ def create_plots(
             previous_day_data["Presence"] = align_presence_to_timestamps(
                 previous_day_data, presence_df
             )
-            # Rolling 5-minute net change: sum minute-to-minute active-power deltas.
+            # Rolling 5-minute net change: sum minute-to-minute total-power deltas.
             prev_day_idx = previous_day_data.set_index("Timestamp")
-            prev_day_idx["Active_Power_Delta_5min_kW"] = (
-                prev_day_idx["Active_Power_kW"].diff().fillna(0.0).rolling("5min").sum()
+            prev_day_idx["Power_Delta_5min_kW"] = (
+                prev_day_idx["Power_kW"].diff().fillna(0.0).rolling("5min").sum()
             )
-            previous_day_data["Active_Power_Delta_5min_kW"] = (
-                prev_day_idx["Active_Power_Delta_5min_kW"].fillna(0.0).values
+            previous_day_data["Power_Delta_5min_kW"] = (
+                prev_day_idx["Power_Delta_5min_kW"].fillna(0.0).values
             )
 
-            raw_delta = previous_day_data["Active_Power_Delta_5min_kW"].astype(float)
+            raw_delta = previous_day_data["Power_Delta_5min_kW"].astype(float)
             smoothed_delta = raw_delta.copy()
             smoothed_delta_label = "Smoothed Delta (raw fallback)"
             if savgol_filter is not None and len(raw_delta) >= 7:
