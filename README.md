@@ -1,102 +1,103 @@
 # LabSENSE
 
-A comprehensive IoT laboratory monitoring and management system integrating sensor data collection, chemical inventory tracking, waste management, and environmental monitoring for intelligent lab operations.
+A laboratory IoT monitoring and analytics platform for chemistry lab environments. Collects real-time sensor data from Raspberry Pi devices, retrieves chemical inventory data from a cloud API, processes hazardous waste records, and generates interactive HTML dashboards visualising all data streams.
 
-## Features
-
-- **Chemical Inventory Management**: Track chemical stock levels with traffic light warnings (integrates with ChemInventory API)
-- **Waste Management**: Process and track waste volumes per cost center (HP codes) with Excel integration
-- **Utility Monitoring**: Track electricity and water consumption via EmonCMS integration
-- **Sensor Monitoring**: Real-time data collection from multiple sensors (distance, light, proximity, strain gauges)
-- **Environmental Monitoring**: Temperature, humidity, pressure, and gas monitoring
-- **Data Visualization**: Generate interactive HTML dashboards (chemicals, waste, electricity, orders)
-- **Data Management**: Multiple database backends (SQLite and SQL Server support)
-- **Azure IoT Integration**: Stream sensor data to Azure IoT Hub
-- **MQTT Communication**: Publish/subscribe messaging for distributed systems
-- **Excel Integration**: Auto-generating reports and inventory tracking sheets
-
-## Project Structure
+## Architecture
 
 ```
-labsense/
-├── ChemInventory/          # Chemical inventory API integration
-├── Consumables/            # Consumable tracking systems
-├── Waste/                  # Waste processing and HP code aggregation
-├── Balance Comms/          # Balance communication interface
-├── Labsense_SQL/           # SQL Server data operations & dashboards
-├── Labsense_SQLite/        # SQLite database operations
-├── Labsense_Excel/         # Excel report generation & traffic light systems
-├── Labsense_Sensors/       # Sensor interfacing code
-├── RaspberryPi-4/          # Raspberry Pi 4 Azure IoT deployment scripts
-├── RaspberryPi-Pico/       # Raspberry Pi Pico microcontroller firmware
-├── plots/                  # Generated dashboard HTML and visualization PNGs
-├── SQL/                    # SQL query documentation
-├── tests/                  # Unit tests (pytest)
-├── .vscode/                # VS Code debug configuration
-└── .env                    # Environment variables (root level, see Configuration)
+[Raspberry Pi 4 / Pico]  →  MQTT  →  Subscriber  →  SQL Server (labsense DB)
+[ChemInventory API]      →  HTTP  →  CI scripts   →  SQL Server
+[Waste Master.xlsx]      →  file  →  Waste module →  HTML dashboards (plots/)
+[Balance (RS-232)]       →  serial → balance_ci   →  ChemInventory API update
 ```
+
+## Modules
+
+| Directory | Purpose |
+|---|---|
+| `Labsense_SQL/` | SQL Server data layer — inserts, queries, and HTML dashboard generation for chemicals, electricity, fumehood, and water |
+| `Labsense_Sensors/` | Raspberry Pi sensor scripts — VL53L1X ToF (fumehood sash position), LTR559 light sensor, and GPIO water flow sensors |
+| `ChemInventory/` | Ad-hoc scripts querying the ChemInventory REST API by CAS number or GHS hazard code |
+| `Waste/` | Reads `Waste Master.xlsx`, proportionally allocates waste volumes across HP1–HP15 hazard codes, and generates per-HP dashboards |
+| `Balance Comms/` | Scans a barcode, reads weight from a serial balance (Denver Instruments SI-2002), and updates ChemInventory via REST API |
+| `RaspberryPi-4/` | Scheduled scripts pushing sensor streams (electricity, fumehood, GHS, order/waste lists) to Azure IoT Hub |
+| `RaspberryPi-Pico/` | MicroPython firmware — WiFi, Azure IoT Hub connection, BME68x environmental sensor |
+| `Labsense_SQLite/` | Legacy local SQLite equivalents of the SQL Server scripts |
+| `Labsense_Excel/` | Legacy Excel-based order and waste update scripts using `openpyxl` |
+| `tests/` | `pytest` unit tests for core processing logic |
+| `plots/` | Generated HTML dashboards and matplotlib PNGs |
+| `create_main_dashboard.py` | Generates the top-level HTML landing page linking all dashboards in `plots/` |
 
 ## Dependencies
 
-This project uses Conda for environment management. Key dependencies include:
+Managed via Conda. Key packages:
 
-- **Data Processing**: pandas, numpy, matplotlib
-- **Databases**: sqlite, pyodbc (SQL Server)
-- **APIs & Networking**: requests, paho-mqtt
-- **Excel Operations**: openpyxl
-- **Configuration**: python-dotenv
-- **Testing**: pytest
-- **Hardware Interfaces**: RPi.GPIO, gpiozero, VL53L1X, ltr559, hx711-multi (for Raspberry Pi deployment)
+- **Data processing**: `pandas`, `numpy`, `matplotlib`
+- **Database**: `pyodbc` (SQL Server, ODBC Driver 18); `sqlite3` (legacy)
+- **Messaging**: `paho-mqtt`, Azure IoT Hub SDK
+- **APIs**: `requests`
+- **Spreadsheets**: `openpyxl`
+- **Configuration**: `python-dotenv`
+- **Testing**: `pytest`
+- **Hardware** *(Raspberry Pi only)*: `RPi.GPIO`, `gpiozero`, `VL53L1X`, `ltr559`, `hx711-multi`, `adafruit-circuitpython-charlcd`
 
-See `environment.yml` for the complete dependency list.
+See `environment.yml` for the full list.
 
 ## Installation
 
-1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/labsense.git
 cd labsense
-```
-
-2. Create the Conda environment:
-```bash
 conda env create -f environment.yml
 conda activate labsense
 ```
 
-3. Configure environment variables (see Configuration section below)
-
 ## Configuration
 
-Environment variables are centralized in a `.env` file at the repository root. Create a `.env` file with the following variables:
+Create a `.env` file at the repository root:
 
 ```env
-# Azure IoT Hub Connection String
+# SQL Server connection string (Windows Trusted Auth)
+CHEMINVENTORY_CONNECTION_STRING=DRIVER={ODBC Driver 18 for SQL Server};SERVER=MSM-FPM-70203\LABSENSE;DATABASE=labsense;Trusted_Connection=yes;
+
+# ChemInventory API token (see ChemInventory/authtoken.py)
+CHEMINVENTORY_API_TOKEN=your_token_here
+
+# Toggle SQL Server inserts for ChemInventory data (True/False)
+CHEMINVENTORY_INSERT_TO_SQL=True
+
+# Azure IoT Hub device connection string
 IOTHUB_DEVICE_CONNECTION_STRING=your_azure_iothub_connection_string
 
-# ChemInventory API Authentication Token
-CHEMINVENTORY_CONNECTION_STRING=your_cheminventory_token
-
-# EmonCMS API Key (for electricity/water consumption data)
+# EmonCMS API key (electricity/water data)
 EMONCMS_API_KEY=your_emoncms_api_key
 
-# SQL Server Options
-CHEMINVENTORY_INSERT_TO_SQL=True # Toggle ChemInventory SQL Server inserts (default: True)
-LOG_LEVEL=INFO                  # Logging level (default: INFO)
+# Logging level
+LOG_LEVEL=INFO
 ```
 
-The `.env` file is automatically loaded by all modules. Each module loads the `.env` file from the repository root, ensuring centralized configuration management.
+Sensor scripts on the Raspberry Pi use a separate `.env` in their own directory (e.g. `Labsense_Sensors/.env`) for MQTT broker address, I2C addresses, sensor thresholds, and retry settings.
 
-### Fumehood sensor tuning (`Labsense_Sensors/.env`)
+## Running the Dashboards
 
-The fumehood script (`Labsense_Sensors/fumehood.py`) uses a local `.env` file in `Labsense_Sensors/` for sensor and MQTT settings.
+Generate all HTML dashboards and the landing page:
 
-Recommended starter values for improved VL53L1X stability:
+```bash
+python Labsense_SQL/ChemInventory_dashboard.py
+python Labsense_SQL/consumption_dashboard.py
+python Labsense_SQL/Fumehood_dashboard.py
+python Labsense_SQL/water_dashboard.py
+python Waste/processWasteMaster.py
+python create_main_dashboard.py
+```
 
-```env
-# Logging retention (daily rotation, keep last 7 files)
-FUMEHOOD_LOG_RETENTION_DAYS=7
-FUMEHOOD_LOG_ROTATE_WHEN=midnight
+Output is written to `plots/`. Open `plots/summary_dashboard.html` in a browser.
+
+## Running Tests
+
+```bash
+pytest
+```
 
 # Optional explicit timing (set both to non-zero to enable set_timing + start_ranging(0))
 TOF_TIMING_BUDGET_US=50000
