@@ -824,9 +824,7 @@ def create_html_dashboard(
         prior_working_day = get_previous_working_day(
             datetime.combine(requested_previous_day, datetime.min.time())
         )
-        prior_day_rows = df[
-            df["Datestamp"].dt.date == prior_working_day
-        ]
+        prior_day_rows = df[df["Datestamp"].dt.date == prior_working_day]
         if not prior_day_rows.empty and not previous_day_rows.empty:
             prior_day_consumption = float(prior_day_rows.iloc[0]["Esum"])
             previous_day_change = previous_day_consumption - prior_day_consumption

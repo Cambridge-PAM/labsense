@@ -55,6 +55,15 @@ def test_align_presence_defaults_to_zero_when_missing():
 
 
 def test_get_previous_working_day_skips_weekend():
-    assert str(get_previous_working_day(pd.Timestamp("2026-04-20 09:00:00"))) == "2026-04-17"
-    assert str(get_previous_working_day(pd.Timestamp("2026-04-19 09:00:00"))) == "2026-04-17"
-    assert str(get_previous_working_day(pd.Timestamp("2026-04-18 09:00:00"))) == "2026-04-17"
+    assert (
+        str(get_previous_working_day(pd.Timestamp("2026-04-20 09:00:00")))
+        == "2026-04-17"
+    )
+    assert (
+        str(get_previous_working_day(pd.Timestamp("2026-04-19 09:00:00")))
+        == "2026-04-17"
+    )
+    assert (
+        str(get_previous_working_day(pd.Timestamp("2026-04-18 09:00:00")))
+        == "2026-04-17"
+    )
