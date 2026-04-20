@@ -1,3 +1,4 @@
+"""Fetch ChemInventory data via the ChemInventory API and insert normalised volumes into SQL Server."""
 import json
 import sys
 from pathlib import Path

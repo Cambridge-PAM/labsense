@@ -1,3 +1,4 @@
+"""Tests for fumehood presence-hours calculation logic in Fumehood_dashboard."""
 import pandas as pd
 
 from Labsense_SQL.Fumehood_dashboard import (

@@ -1,3 +1,4 @@
+"""GSK environmental traffic-light dictionaries mapping chemical names to CAS numbers."""
 gsk_composite_red = {
     "Tetrahydrofurfuryl alcohol": "97-99-4",
     "2-Methoxyethanol": "109-86-4",

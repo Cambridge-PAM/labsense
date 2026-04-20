@@ -1,3 +1,4 @@
+"""Read an initial waste spreadsheet and insert waste volume records into SQL Server."""
 import os
 import pandas as pd
 import pyodbc

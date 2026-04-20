@@ -6,7 +6,6 @@
 # W1203  logging-fstring-interpolation  f-strings preferred for readability
 # C0415  import-outside-toplevel     matplotlib imported lazily inside functions
 # W0718  broad-exception-caught      intentional defensive programming in IO code
-# C0114  missing-module-docstring    utility scripts/modules do not require module docstrings
 # C0116  missing-function-docstring  utility functions do not require docstrings
 # R0914  too-many-locals             complex analytical/dashboard functions
 # R0912  too-many-branches           complex analytical functions
@@ -21,7 +20,6 @@ disable=
     logging-fstring-interpolation,
     import-outside-toplevel,
     broad-exception-caught,
-    missing-module-docstring,
     missing-function-docstring,
     too-many-locals,
     too-many-branches,
@@ -30,7 +28,6 @@ disable=
     too-many-arguments,
     too-many-positional-arguments,
     wrong-import-order,
-    wrong-import-position,
     consider-using-with,
     redefined-outer-name,
     unused-argument

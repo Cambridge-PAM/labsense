@@ -1,3 +1,4 @@
+"""Read a waste spreadsheet and upsert recent waste records into SQL Server."""
 import os
 import pandas as pd
 from datetime import datetime, timedelta, date

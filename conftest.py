@@ -1,3 +1,4 @@
+"""Pytest configuration: ensure the project root is on sys.path for all tests."""
 # Ensure project root is on sys.path so tests can import local packages
 import os
 import sys

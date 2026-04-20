@@ -1,3 +1,4 @@
+"""Read an initial chemical order spreadsheet and insert volume records into SQL Server."""
 from datetime import date
 import os
 import pandas as pd
