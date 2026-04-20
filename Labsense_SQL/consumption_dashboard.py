@@ -985,9 +985,9 @@ def create_html_dashboard(
             html_lines += [
                 '      <div class="stat-card teal">',
                 "        <h3>Active Power Use</h3>",
-                f'        <div class="value">{plot_files["active_percentage"]:.1f}%</div>',
-                '        <div class="unit">of 7-day consumption</div>',
-                f'        <div class="subtext">{active_energy:.1f} kWh active energy</div>',
+                f'        <div class="value">{active_energy:.1f}</div>',
+                '        <div class="unit">kWh over 7 days</div>',
+                f'        <div class="subtext">{plot_files["active_percentage"]:.1f}% of 7-day consumption</div>',
                 "      </div>",
             ]
 
