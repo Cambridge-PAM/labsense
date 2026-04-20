@@ -784,8 +784,13 @@ def create_plots(
                 # Idle energy over 7 days: idle_power_kw (kW) * 7 days * 24 hours = kWh
                 idle_energy_kwh = idle_power_kw * 7 * 24
                 idle_percentage = (idle_energy_kwh / total_energy_kwh) * 100
+                active_energy_kwh = max(total_energy_kwh - idle_energy_kwh, 0.0)
+                active_percentage = (active_energy_kwh / total_energy_kwh) * 100
                 plot_files["idle_percentage"] = idle_percentage
+                plot_files["active_energy_kwh"] = active_energy_kwh
+                plot_files["active_percentage"] = active_percentage
                 print(f"Idle energy percentage: {idle_percentage:.1f}%")
+                print(f"Active energy percentage: {active_percentage:.1f}%")
 
     return plot_files
 
@@ -972,6 +977,17 @@ def create_html_dashboard(
                 "        <h3>Idle Power Percentage</h3>",
                 f'        <div class="value">{plot_files["idle_percentage"]:.1f}%</div>',
                 '        <div class="unit">of 7-day consumption</div>',
+                "      </div>",
+            ]
+
+        if "active_percentage" in plot_files:
+            active_energy = plot_files.get("active_energy_kwh", 0.0)
+            html_lines += [
+                '      <div class="stat-card teal">',
+                "        <h3>Active Power Use</h3>",
+                f'        <div class="value">{plot_files["active_percentage"]:.1f}%</div>',
+                '        <div class="unit">of 7-day consumption</div>',
+                f'        <div class="subtext">{active_energy:.1f} kWh active energy</div>',
                 "      </div>",
             ]
 
