@@ -146,7 +146,7 @@ def get_minute_data_for_date(target_date):
         end_timestamp_ms = int(end_datetime.timestamp()) * 1000
 
         url_minute = (
-            "http://10.247.40.36/feed/average.json?id=21&start="
+            "http://10.247.12.138/feed/average.json?id=21&start="
             + str(start_timestamp_ms)
             + "&end="
             + str(end_timestamp_ms)

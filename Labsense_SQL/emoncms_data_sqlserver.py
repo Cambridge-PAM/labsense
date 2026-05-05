@@ -9,7 +9,7 @@ import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
-url = "http://10.247.40.36/feed/fetch.json?ids=20,21&apikey=APIKEY"  # details about how url is formed can be found here https://emoncms.org/site/api#feed ,add your own APIKEY
+url = "http://10.247.12.138/feed/fetch.json?ids=20,21&apikey=APIKEY"  # details about how url is formed can be found here https://emoncms.org/site/api#feed ,add your own APIKEY
 
 # Load environment variables from Labsense_SQL/.env
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -84,7 +84,7 @@ while True:
     )  # finding current UNIX_MILLISECOND timestamp
 
     url_midnight = (
-        "http://10.247.40.36/feed/data.json?id=21&start="
+        "http://10.247.12.138/feed/data.json?id=21&start="
         + str(timestamp_milliseconds)
         + "&end="
         + str(current_timestamp_milliseconds)
