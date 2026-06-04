@@ -59,6 +59,9 @@ All SQL/processing scripts read configuration from `Labsense_SQL/.env`:
 # EmonCMS API key (electricity/water consumption data)
 EMONCMS_API_KEY=your_emoncms_api_key
 
+# EmonCMS base URL (host/IP + scheme)
+EMONCMS_BASE_URL=https://your_emoncms_host
+
 # Logging level
 LOG_LEVEL=INFO
 

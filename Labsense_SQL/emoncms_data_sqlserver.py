@@ -9,10 +9,24 @@ import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
-url = "http://10.247.12.138/feed/fetch.json?ids=20,21&apikey=APIKEY"  # details about how url is formed can be found here https://emoncms.org/site/api#feed ,add your own APIKEY
-
 # Load environment variables from Labsense_SQL/.env
 load_dotenv(Path(__file__).resolve().parent / ".env")
+
+# EmonCMS configuration from environment variables
+EMONCMS_API_KEY = os.getenv("EMONCMS_API_KEY")
+if not EMONCMS_API_KEY:
+    raise ValueError(
+        "EMONCMS_API_KEY not found in environment variables. Please check your .env file."
+    )
+
+EMONCMS_BASE_URL = os.getenv("EMONCMS_BASE_URL")
+if not EMONCMS_BASE_URL:
+    raise ValueError(
+        "EMONCMS_BASE_URL not found in environment variables. Please check your .env file."
+    )
+EMONCMS_BASE_URL = EMONCMS_BASE_URL.rstrip("/")
+if not EMONCMS_BASE_URL.startswith(("http://", "https://")):
+    raise ValueError("EMONCMS_BASE_URL must include a scheme (http:// or https://).")
 
 # Connection information (from Labsense_SQL/.env)
 sqlServerName = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE")
@@ -84,12 +98,14 @@ while True:
     )  # finding current UNIX_MILLISECOND timestamp
 
     url_midnight = (
-        "http://10.247.12.138/feed/data.json?id=21&start="
+        f"{EMONCMS_BASE_URL}/feed/data.json?id=21&start="
         + str(timestamp_milliseconds)
         + "&end="
         + str(current_timestamp_milliseconds)
-        + "&mode=daily&apikey=APIKEY"
-    )  # details about how url is formed can be found here https://emoncms.org/site/api#feed , add your own APIKEY
+        + f"&mode=daily&apikey={EMONCMS_API_KEY}"
+    )
+
+    url = f"{EMONCMS_BASE_URL}/feed/fetch.json?ids=20,21&apikey={EMONCMS_API_KEY}"
 
     response_midnight = urlopen(url_midnight)
     data_json_midnight = json.loads(response_midnight.read())

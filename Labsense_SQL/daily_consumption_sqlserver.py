@@ -35,6 +35,16 @@ if not EMONCMS_API_KEY:
         "EMONCMS_API_KEY not found in environment variables. Please check your .env file."
     )
 
+# EmonCMS host/base URL (required in Labsense_SQL/.env)
+EMONCMS_BASE_URL = os.getenv("EMONCMS_BASE_URL")
+if not EMONCMS_BASE_URL:
+    raise ValueError(
+        "EMONCMS_BASE_URL not found in environment variables. Please check your .env file."
+    )
+EMONCMS_BASE_URL = EMONCMS_BASE_URL.rstrip("/")
+if not EMONCMS_BASE_URL.startswith(("http://", "https://")):
+    raise ValueError("EMONCMS_BASE_URL must include a scheme (http:// or https://).")
+
 
 def create_table_if_not_exists():
     """Create the elecDaily table if it doesn't exist."""
@@ -115,7 +125,7 @@ def get_daily_consumption_for_date(target_date):
         end_timestamp_ms = int(end_datetime.timestamp()) * 1000
 
         url_daily = (
-            "http://10.247.12.138/feed/data.json?id=21&start="
+            f"{EMONCMS_BASE_URL}/feed/data.json?id=21&start="
             + str(start_timestamp_ms)
             + "&end="
             + str(end_timestamp_ms)
