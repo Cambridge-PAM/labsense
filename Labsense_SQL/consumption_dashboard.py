@@ -290,6 +290,7 @@ def create_plots(
         ax.set_title(title, fontsize=14, fontweight="bold")
         ax.grid(True, alpha=0.3)
         ax.legend(loc="upper right")
+        ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
         plt.xticks(rotation=45, ha="right")
 
@@ -806,6 +807,7 @@ def create_plots(
                 ax_delta.set_xlabel("Time", fontsize=12)
                 ax_delta.grid(True, alpha=0.3)
                 ax_delta.legend(loc="upper left")
+                ax_delta.xaxis.set_major_locator(mdates.HourLocator(interval=1))
                 ax_delta.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
                 plt.xticks(rotation=45, ha="right")
 
