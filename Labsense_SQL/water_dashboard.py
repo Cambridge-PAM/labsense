@@ -53,7 +53,7 @@ ANALYSIS_WINDOW_MONTHS = 2
 INVALID_WATER_READING_L = 0.003
 WATER_VALIDATION_TOLERANCE = 5e-4
 OLYMPIC_POOL_VOLUME_L = 2_500_000
-HOURLY_WATER_PLOT_KEYS = {(1, 3)}
+DAILY_WATER_PLOT_KEYS = {(1, 3)}
 
 
 def get_analysis_start() -> pd.Timestamp:
@@ -166,24 +166,24 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if plot_df.empty:
             continue
 
-        use_hourly_plot = key in HOURLY_WATER_PLOT_KEYS
+        use_daily_plot = key in DAILY_WATER_PLOT_KEYS
 
-        if use_hourly_plot:
+        if use_daily_plot:
             plot_df = (
                 plot_df.set_index("Timestamp")
-                .resample("h")["Water"]
+                .resample("D")["Water"]
                 .sum()
                 .reset_index()
             )
-            x_label = "Timestamp"
-            y_label = "Hourly Water Consumption (L)"
+            x_label = "Date"
+            y_label = "Daily Water Consumption (L)"
             title = (
-                f"{get_display_label(lab_id, sublab_id)}: Hourly Water Consumption "
+                f"{get_display_label(lab_id, sublab_id)}: Daily Water Consumption "
                 f"({water_errors} errors excluded)"
             )
-            bar_width = 1 / 36
+            bar_width = 0.8
             ax_locator = mdates.DayLocator(interval=1)
-            ax_formatter = mdates.DateFormatter("%Y-%m-%d %H:%M")
+            ax_formatter = mdates.DateFormatter("%Y-%m-%d")
         else:
             # Aggregate data into weekly intervals
             plot_df = (
