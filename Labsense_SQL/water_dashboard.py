@@ -53,6 +53,7 @@ ANALYSIS_WINDOW_MONTHS = 2
 INVALID_WATER_READING_L = 0.003
 WATER_VALIDATION_TOLERANCE = 5e-4
 OLYMPIC_POOL_VOLUME_L = 2_500_000
+HOURLY_WATER_PLOT_KEYS = {(1, 3)}
 
 
 def get_analysis_start() -> pd.Timestamp:
@@ -165,34 +166,60 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         if plot_df.empty:
             continue
 
-        # Aggregate data into weekly intervals
-        plot_df = (
-            plot_df.set_index("Timestamp")
-            .resample("W-MON", label="left", closed="left")["Water"]
-            .sum()
-            .reset_index()
-        )
+        use_hourly_plot = key in HOURLY_WATER_PLOT_KEYS
+
+        if use_hourly_plot:
+            plot_df = (
+                plot_df.set_index("Timestamp")
+                .resample("h")["Water"]
+                .sum()
+                .reset_index()
+            )
+            x_label = "Timestamp"
+            y_label = "Hourly Water Consumption (L)"
+            title = (
+                f"{get_display_label(lab_id, sublab_id)}: Hourly Water Consumption "
+                f"({water_errors} errors excluded)"
+            )
+            bar_width = 1 / 36
+            ax_locator = mdates.DayLocator(interval=1)
+            ax_formatter = mdates.DateFormatter("%Y-%m-%d %H:%M")
+        else:
+            # Aggregate data into weekly intervals
+            plot_df = (
+                plot_df.set_index("Timestamp")
+                .resample("W-MON", label="left", closed="left")["Water"]
+                .sum()
+                .reset_index()
+            )
+            x_label = "Date"
+            y_label = "Weekly Water Consumption (L)"
+            title = (
+                f"{get_display_label(lab_id, sublab_id)}: Weekly Water Consumption "
+                f"({water_errors} errors excluded)"
+            )
+            bar_width = 5.5
+            ax_locator = mdates.WeekdayLocator(byweekday=0, interval=1)
+            ax_formatter = mdates.DateFormatter("%Y-%m-%d")
 
         # Create figure with water consumption plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Plot Water Consumption as bars (weekly)
+        # Plot Water Consumption as bars
         ax.bar(
             plot_df["Timestamp"],
             plot_df["Water"],
             color="#3498db",
-            width=5.5,  # Weekly bar width (in days)
+            width=bar_width,
             edgecolor="#2980b9",
             linewidth=1.2,
         )
-        ax.set_xlabel("Date")
-        ax.set_ylabel("Weekly Water Consumption (L)")
-        ax.set_title(
-            f"{get_display_label(lab_id, sublab_id)}: Weekly Water Consumption ({water_errors} errors excluded)"
-        )
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_title(title)
         ax.grid(True, alpha=0.3, axis="y")
-        ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=0, interval=1))
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+        ax.xaxis.set_major_locator(ax_locator)
+        ax.xaxis.set_major_formatter(ax_formatter)
         ax.tick_params(axis="x", labelsize=8)
 
         fig.autofmt_xdate()

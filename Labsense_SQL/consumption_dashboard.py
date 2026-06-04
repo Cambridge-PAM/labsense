@@ -246,19 +246,86 @@ def create_plots(
 
     plot_files = {}
 
-    # Filter to last two years window, anchored to the 1st of the start month
-    two_years_ago = datetime.now() - timedelta(days=730)
-    last_two_years_start = two_years_ago.replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0
-    )
-    df_last_year = df[df["Datestamp"] >= last_two_years_start].copy()
+    def save_minute_level_power_plot(
+        power_df: pd.DataFrame, title: str, output_name: str
+    ) -> str:
+        """Create and save a minute-level power plot."""
+        _fig, ax = plt.subplots(figsize=(14, 6))
 
-    if df_last_year.empty:
-        print("No data in the last two years")
-        return {}
+        if CALCULATE_IDLE_POWER and idle_power_kw > 0:
+            ax.plot(
+                power_df["Timestamp"],
+                power_df["Power_kW"],
+                linewidth=0.8,
+                color="#95a5a6",
+                alpha=0.5,
+                label=f"Total Power (inc. {idle_power_kw:.2f} kW idle)",
+            )
+            ax.plot(
+                power_df["Timestamp"],
+                power_df["Active_Power_kW"],
+                linewidth=1.2,
+                color="#3498db",
+                label="Active Power",
+            )
+            ax.axhline(
+                y=idle_power_kw,
+                color="#e74c3c",
+                linestyle="--",
+                linewidth=1.5,
+                alpha=0.7,
+                label=f"Idle Power ({idle_power_kw:.2f} kW)",
+            )
+        else:
+            ax.plot(
+                power_df["Timestamp"],
+                power_df["Power_kW"],
+                linewidth=1.2,
+                color="#3498db",
+                label="Total Power",
+            )
 
-    # Sort by date for plotting
-    df_sorted = df_last_year.sort_values(by=["Datestamp"])  # type: ignore[call-overload]
+        ax.set_xlabel("Time", fontsize=12)
+        ax.set_ylabel("Power (kW)", fontsize=12)
+        ax.set_title(title, fontsize=14, fontweight="bold")
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right")
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
+        plt.xticks(rotation=45, ha="right")
+
+        plt.tight_layout()
+        output_path = plot_dir / output_name
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Created plot: {output_path}")
+        return output_path.name
+
+    df_input = df.copy()
+    input_start = df_input["Datestamp"].min()
+    input_end = df_input["Datestamp"].max()
+    is_bounded_time_range = (input_end - input_start) <= timedelta(days=120)
+
+    if is_bounded_time_range:
+        df_sorted = df_input.sort_values(by=["Datestamp"])  # type: ignore[call-overload]
+        daily_title = (
+            f"Daily Electricity Consumption ({input_start:%Y-%m-%d} to "
+            f"{input_end:%Y-%m-%d})"
+        )
+    else:
+        # Filter to last two years window, anchored to the 1st of the start month
+        two_years_ago = datetime.now() - timedelta(days=730)
+        last_two_years_start = two_years_ago.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        df_last_year = df_input[df_input["Datestamp"] >= last_two_years_start].copy()
+
+        if df_last_year.empty:
+            print("No data in the last two years")
+            return {}
+
+        df_sorted = df_last_year.sort_values(by=["Datestamp"])  # type: ignore[call-overload]
+        daily_title = "Daily Electricity Consumption Trends (Last Two Years)"
+
     df_sorted["Esum_7d_ma"] = df_sorted["Esum"].rolling(window=7, min_periods=1).mean()
 
     # Create daily consumption trend plot (last year only)
@@ -283,11 +350,7 @@ def create_plots(
     )
     ax.set_xlabel("Date", fontsize=12)
     ax.set_ylabel("Daily Consumption (kWh)", fontsize=12)
-    ax.set_title(
-        "Daily Electricity Consumption Trends (Last Two Years)",
-        fontsize=14,
-        fontweight="bold",
-    )
+    ax.set_title(daily_title, fontsize=14, fontweight="bold")
     ax.grid(True, alpha=0.3)
     ax.legend()
 
@@ -302,38 +365,39 @@ def create_plots(
     plot_files["daily"] = daily_plot.name
     print(f"Created plot: {daily_plot}")
 
-    # Create monthly consumption plot
-    df_monthly = df_sorted.copy()
-    df_monthly["YearMonth"] = df_monthly["Datestamp"].dt.to_period("M")
-    monthly_data = df_monthly.groupby("YearMonth")["Esum"].sum().reset_index()
-    monthly_data["YearMonth"] = monthly_data["YearMonth"].astype(str)
+    if not is_bounded_time_range:
+        # Create monthly consumption plot for long-running dashboard views.
+        df_monthly = df_sorted.copy()
+        df_monthly["YearMonth"] = df_monthly["Datestamp"].dt.to_period("M")
+        monthly_data = df_monthly.groupby("YearMonth")["Esum"].sum().reset_index()
+        monthly_data["YearMonth"] = monthly_data["YearMonth"].astype(str)
 
-    _fig, ax = plt.subplots(figsize=(12, 6))
-    ax.bar(
-        range(len(monthly_data)),
-        monthly_data["Esum"],
-        color="#3498db",
-        alpha=0.8,
-        edgecolor="#2c3e50",
-        linewidth=1.5,
-    )
-    ax.set_xlabel("Month", fontsize=12)
-    ax.set_ylabel("Monthly Consumption (kWh)", fontsize=12)
-    ax.set_title(
-        "Monthly Electricity Consumption (Last Two Years)",
-        fontsize=14,
-        fontweight="bold",
-    )
-    ax.set_xticks(range(len(monthly_data)))
-    ax.set_xticklabels(monthly_data["YearMonth"], rotation=45, ha="right")
-    ax.grid(True, alpha=0.3, axis="y")
+        _fig, ax = plt.subplots(figsize=(12, 6))
+        ax.bar(
+            range(len(monthly_data)),
+            monthly_data["Esum"],
+            color="#3498db",
+            alpha=0.8,
+            edgecolor="#2c3e50",
+            linewidth=1.5,
+        )
+        ax.set_xlabel("Month", fontsize=12)
+        ax.set_ylabel("Monthly Consumption (kWh)", fontsize=12)
+        ax.set_title(
+            "Monthly Electricity Consumption (Last Two Years)",
+            fontsize=14,
+            fontweight="bold",
+        )
+        ax.set_xticks(range(len(monthly_data)))
+        ax.set_xticklabels(monthly_data["YearMonth"], rotation=45, ha="right")
+        ax.grid(True, alpha=0.3, axis="y")
 
-    plt.tight_layout()
-    monthly_plot = plot_dir / "electricity_consumption_monthly.png"
-    plt.savefig(monthly_plot, dpi=150, bbox_inches="tight")
-    plt.close()
-    plot_files["monthly"] = monthly_plot.name
-    print(f"Created plot: {monthly_plot}")
+        plt.tight_layout()
+        monthly_plot = plot_dir / "electricity_consumption_monthly.png"
+        plt.savefig(monthly_plot, dpi=150, bbox_inches="tight")
+        plt.close()
+        plot_files["monthly"] = monthly_plot.name
+        print(f"Created plot: {monthly_plot}")
 
     # Create granular consumption plot (last 7 days with minute-level data)
     if df_granular is not None and not df_granular.empty:
@@ -349,430 +413,411 @@ def create_plots(
         # Ensure non-negative
         df_gran["Active_Power_kW"] = df_gran["Active_Power_kW"].clip(lower=0)
 
-        _fig, ax = plt.subplots(figsize=(14, 6))
-
-        if CALCULATE_IDLE_POWER and idle_power_kw > 0:
-            # Plot both total and active power
-            ax.plot(
-                df_gran["Timestamp"],
-                df_gran["Power_kW"],
-                linewidth=0.8,
-                color="#95a5a6",
-                alpha=0.5,
-                label=f"Total Power (inc. {idle_power_kw:.2f} kW idle)",
-            )
-            ax.plot(
-                df_gran["Timestamp"],
-                df_gran["Active_Power_kW"],
-                linewidth=1.2,
-                color="#3498db",
-                label="Active Power",
-            )
-            # Add idle power line
-            ax.axhline(
-                y=idle_power_kw,
-                color="#e74c3c",
-                linestyle="--",
-                linewidth=1.5,
-                alpha=0.7,
-                label=f"Idle Power ({idle_power_kw:.2f} kW)",
-            )
-            ylabel = "Power (kW)"
-            title_suffix = " - Active vs Total"
-        else:
-            # Plot only total power
-            ax.plot(
-                df_gran["Timestamp"],
-                df_gran["Power_kW"],
-                linewidth=1.2,
-                color="#3498db",
-                label="Total Power",
-            )
-            ylabel = "Power (kW)"
-            title_suffix = ""
-
-        ax.set_xlabel("Time", fontsize=12)
-        ax.set_ylabel(ylabel, fontsize=12)
-        ax.set_title(
-            f"Minute-Level Power Consumption (Last 7 Days){title_suffix}",
-            fontsize=14,
-            fontweight="bold",
+        title_suffix = (
+            " - Active vs Total" if CALCULATE_IDLE_POWER and idle_power_kw > 0 else ""
         )
-        ax.grid(True, alpha=0.3)
-        ax.legend(loc="upper right")
 
-        # Format x-axis dates
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
-        plt.xticks(rotation=45, ha="right")
+        if is_bounded_time_range:
+            daily_starts = sorted(df_gran["Timestamp"].dt.normalize().drop_duplicates())
+            for day_start in daily_starts:
+                day_end = day_start + timedelta(days=1)
+                day_data = df_gran[
+                    (df_gran["Timestamp"] >= day_start)
+                    & (df_gran["Timestamp"] < day_end)
+                ].copy()
+                if day_data.empty:
+                    continue
 
-        plt.tight_layout()
-        granular_plot = plot_dir / "electricity_consumption_granular.png"
-        plt.savefig(granular_plot, dpi=150, bbox_inches="tight")
-        plt.close()
-        plot_files["granular"] = granular_plot.name
-        print(f"Created plot: {granular_plot}")
-
-        previous_working_day = get_previous_working_day()
-        previous_day_start = datetime.combine(previous_working_day, datetime.min.time())
-        previous_day_end = previous_day_start + timedelta(days=1)
-        previous_day_data = df_gran[
-            (df_gran["Timestamp"] >= previous_day_start)
-            & (df_gran["Timestamp"] < previous_day_end)
-        ].copy()
-        if not previous_day_data.empty:
-            previous_day_data = previous_day_data.sort_values(by=["Timestamp"]).copy()
-            previous_day_data["Presence"] = align_presence_to_timestamps(
-                previous_day_data, presence_df
-            )
-            # Rolling 5-minute net change: sum minute-to-minute total-power deltas.
-            prev_day_idx = previous_day_data.set_index("Timestamp")
-            prev_day_idx["Power_Delta_5min_kW"] = (
-                prev_day_idx["Power_kW"].diff().fillna(0.0).rolling("5min").sum()
-            )
-            previous_day_data["Power_Delta_5min_kW"] = (
-                prev_day_idx["Power_Delta_5min_kW"].fillna(0.0).values
-            )
-
-            raw_delta = previous_day_data["Power_Delta_5min_kW"].astype(float)
-            smoothed_delta = raw_delta.copy()
-            smoothed_delta_label = "Smoothed Delta (raw fallback)"
-            if savgol_filter is not None and len(raw_delta) >= 7:
-                window_length = min(
-                    9,
-                    len(raw_delta) if len(raw_delta) % 2 == 1 else len(raw_delta) - 1,
+                day_label = pd.Timestamp(day_start).strftime("%Y-%m-%d")
+                plot_files[f"granular_{pd.Timestamp(day_start):%Y%m%d}"] = (
+                    save_minute_level_power_plot(
+                        day_data,
+                        f"Minute-Level Power Consumption ({day_label}){title_suffix}",
+                        f"electricity_consumption_{day_label}.png",
+                    )
                 )
-                if window_length >= 7:
-                    smoothed_delta = pd.Series(
-                        savgol_filter(
-                            raw_delta.to_numpy(),
-                            window_length=window_length,
-                            polyorder=2,
-                            mode="interp",
+        else:
+            plot_files["granular"] = save_minute_level_power_plot(
+                df_gran,
+                f"Minute-Level Power Consumption (Last 7 Days){title_suffix}",
+                "electricity_consumption_granular.png",
+            )
+
+            previous_working_day = get_previous_working_day()
+            previous_day_start = datetime.combine(
+                previous_working_day, datetime.min.time()
+            )
+            previous_day_end = previous_day_start + timedelta(days=1)
+            previous_day_data = df_gran[
+                (df_gran["Timestamp"] >= previous_day_start)
+                & (df_gran["Timestamp"] < previous_day_end)
+            ].copy()
+            if not previous_day_data.empty:
+                previous_day_data = previous_day_data.sort_values(
+                    by=["Timestamp"]
+                ).copy()
+                previous_day_data["Presence"] = align_presence_to_timestamps(
+                    previous_day_data, presence_df
+                )
+                # Rolling 5-minute net change: sum minute-to-minute total-power deltas.
+                prev_day_idx = previous_day_data.set_index("Timestamp")
+                prev_day_idx["Power_Delta_5min_kW"] = (
+                    prev_day_idx["Power_kW"].diff().fillna(0.0).rolling("5min").sum()
+                )
+                previous_day_data["Power_Delta_5min_kW"] = (
+                    prev_day_idx["Power_Delta_5min_kW"].fillna(0.0).values
+                )
+
+                raw_delta = previous_day_data["Power_Delta_5min_kW"].astype(float)
+                smoothed_delta = raw_delta.copy()
+                smoothed_delta_label = "Smoothed Delta (raw fallback)"
+                if savgol_filter is not None and len(raw_delta) >= 7:
+                    window_length = min(
+                        9,
+                        (
+                            len(raw_delta)
+                            if len(raw_delta) % 2 == 1
+                            else len(raw_delta) - 1
                         ),
-                        index=raw_delta.index,
                     )
-                    smoothed_delta_label = "Smoothed Delta (Savitzky-Golay)"
-
-            residual = raw_delta - smoothed_delta
-            median_residual = float(residual.median())
-            mad = float((residual - median_residual).abs().median())
-            noise_sigma = 1.4826 * mad if mad > 0 else float(residual.std())
-            # Lower multiplier increases sensitivity to smaller delta excursions.
-            noise_threshold = 2.0 * noise_sigma if noise_sigma > 0 else 0.0
-
-            _fig, (ax_power, ax_delta) = plt.subplots(
-                2,
-                1,
-                figsize=(14, 8),
-                sharex=True,
-                gridspec_kw={"height_ratios": [3, 1]},
-            )
-
-            if CALCULATE_IDLE_POWER and idle_power_kw > 0:
-                ax_power.plot(
-                    previous_day_data["Timestamp"],
-                    previous_day_data["Power_kW"],
-                    linewidth=0.8,
-                    color="#95a5a6",
-                    alpha=0.5,
-                    label=f"Total Power (inc. {idle_power_kw:.2f} kW idle)",
-                )
-                ax_power.plot(
-                    previous_day_data["Timestamp"],
-                    previous_day_data["Active_Power_kW"],
-                    linewidth=1.2,
-                    color="#3498db",
-                    label="Active Power",
-                )
-                ax_power.axhline(
-                    y=idle_power_kw,
-                    color="#e74c3c",
-                    linestyle="--",
-                    linewidth=1.5,
-                    alpha=0.7,
-                    label=f"Idle Power ({idle_power_kw:.2f} kW)",
-                )
-                previous_day_title_suffix = " - Active vs Total"
-            else:
-                ax_power.plot(
-                    previous_day_data["Timestamp"],
-                    previous_day_data["Power_kW"],
-                    linewidth=1.2,
-                    color="#3498db",
-                    label="Total Power",
-                )
-                previous_day_title_suffix = ""
-
-            ax_power.set_ylabel("Power (kW)", fontsize=12)
-            ax_power.set_title(
-                f"Minute-Level Power Consumption ({previous_day_start.date()}){previous_day_title_suffix}",
-                fontsize=14,
-                fontweight="bold",
-            )
-            ax_power.grid(True, alpha=0.3)
-            ax_power.legend(loc="upper left")
-
-            ax_delta.plot(
-                previous_day_data["Timestamp"],
-                raw_delta,
-                linewidth=1.0,
-                color="#95a5a6",
-                alpha=0.45,
-                label="Raw Delta (rolling 5-min)",
-            )
-            ax_delta.plot(
-                previous_day_data["Timestamp"],
-                smoothed_delta,
-                linewidth=1.6,
-                color="#8e44ad",
-                label=smoothed_delta_label,
-            )
-            ax_delta.axhline(y=0.0, color="#7f8c8d", linestyle="--", linewidth=1.0)
-            if noise_threshold > 0:
-                ax_delta.axhline(
-                    y=noise_threshold,
-                    color="#e67e22",
-                    linestyle=":",
-                    linewidth=1.0,
-                    alpha=0.9,
-                    label="Noise Threshold",
-                )
-                ax_delta.axhline(
-                    y=-noise_threshold,
-                    color="#e67e22",
-                    linestyle=":",
-                    linewidth=1.0,
-                    alpha=0.9,
-                )
-                above_noise = smoothed_delta.abs() >= noise_threshold
-
-                # Collect significant local extrema above the noise threshold.
-                smoothed_vals = smoothed_delta.to_numpy()
-                above_noise_vals = above_noise.to_numpy()
-                extrema = []  # list of (data_idx, value)
-                for idx in range(1, len(smoothed_vals) - 1):
-                    if not above_noise_vals[idx]:
-                        continue
-                    is_local_max = (
-                        smoothed_vals[idx] >= smoothed_vals[idx - 1]
-                        and smoothed_vals[idx] > smoothed_vals[idx + 1]
-                    )
-                    is_local_min = (
-                        smoothed_vals[idx] <= smoothed_vals[idx - 1]
-                        and smoothed_vals[idx] < smoothed_vals[idx + 1]
-                    )
-                    if is_local_max or is_local_min:
-                        extrema.append((idx, float(smoothed_vals[idx])))
-
-                # Cluster extrema with DBSCAN using |delta| only (no time binning).
-                # This ties +/− events of similar magnitude and room-presence state.
-                base_abs_eps = noise_threshold * 0.33
-                dbscan_eps = 0.0
-                cluster_assignments = {}  # extrema list index -> global cluster id
-                cluster_stats = {}  # global cluster id -> {mean_abs, mean_presence}
-                next_cluster_id = 0
-
-                if dbscan_cls is not None and base_abs_eps > 0 and extrema:
-                    abs_values = [abs(val) for _, val in extrema]
-                    presence_values = [
-                        int(previous_day_data["Presence"].iloc[idx])
-                        for idx, _ in extrema
-                    ]
-
-                    abs_series = pd.Series(abs_values, dtype="float64")
-                    abs_std = float(abs_series.std(ddof=0))
-                    abs_mean = float(abs_series.mean())
-                    if abs_std <= 0:
-                        abs_std = 1.0
-
-                    presence_series = pd.Series(presence_values, dtype="float64")
-                    presence_std = float(presence_series.std(ddof=0))
-                    presence_mean = float(presence_series.mean())
-                    if presence_std <= 0:
-                        presence_std = 1.0
-
-                    presence_weight = 0.6
-                    feature_matrix = [
-                        [
-                            (abs_val - abs_mean) / abs_std,
-                            presence_weight
-                            * ((presence_val - presence_mean) / presence_std),
-                        ]
-                        for abs_val, presence_val in zip(abs_values, presence_values)
-                    ]
-
-                    dbscan_eps = max(0.4, base_abs_eps / abs_std)
-                    dbscan_labels = dbscan_cls(
-                        eps=dbscan_eps,
-                        min_samples=3,
-                    ).fit_predict(feature_matrix)
-
-                    for label in sorted(set(dbscan_labels)):
-                        member_indices = [
-                            i
-                            for i, member_label in enumerate(dbscan_labels)
-                            if member_label == label
-                        ]
-                        mean_abs = sum(
-                            abs(extrema[m][1]) for m in member_indices
-                        ) / len(member_indices)
-                        mean_presence = sum(
-                            int(previous_day_data["Presence"].iloc[extrema[m][0]])
-                            for m in member_indices
-                        ) / len(member_indices)
-                        cluster_stats[next_cluster_id] = {
-                            "mean_abs": mean_abs,
-                            "mean_presence": mean_presence,
-                        }
-                        for m in member_indices:
-                            cluster_assignments[m] = next_cluster_id
-                        next_cluster_id += 1
-                else:
-                    # Fallback when DBSCAN isn't available: keep each extrema as its own cluster.
-                    for i, (idx, val) in enumerate(extrema):
-                        cluster_assignments[i] = next_cluster_id
-                        cluster_stats[next_cluster_id] = {
-                            "mean_abs": abs(float(val)),
-                            "mean_presence": float(
-                                int(previous_day_data["Presence"].iloc[idx])
+                    if window_length >= 7:
+                        smoothed_delta = pd.Series(
+                            savgol_filter(
+                                raw_delta.to_numpy(),
+                                window_length=window_length,
+                                polyorder=2,
+                                mode="interp",
                             ),
-                        }
-                        next_cluster_id += 1
+                            index=raw_delta.index,
+                        )
+                        smoothed_delta_label = "Smoothed Delta (Savitzky-Golay)"
 
-                # Labels are ranked by absolute magnitude, regardless of event time.
-                cluster_label_map = {}
-                ordered_cluster_ids = sorted(
-                    cluster_stats,
-                    key=lambda cid: -cluster_stats[cid]["mean_abs"],
+                residual = raw_delta - smoothed_delta
+                median_residual = float(residual.median())
+                mad = float((residual - median_residual).abs().median())
+                noise_sigma = 1.4826 * mad if mad > 0 else float(residual.std())
+                # Lower multiplier increases sensitivity to smaller delta excursions.
+                noise_threshold = 2.0 * noise_sigma if noise_sigma > 0 else 0.0
+
+                _fig, (ax_power, ax_delta) = plt.subplots(
+                    2,
+                    1,
+                    figsize=(14, 8),
+                    sharex=True,
+                    gridspec_kw={"height_ratios": [3, 1]},
                 )
-                for rank, cid in enumerate(ordered_cluster_ids):
-                    cluster_label_map[cid] = chr(65 + rank)
 
-                cluster_colors = [
-                    "#e74c3c",
-                    "#2ecc71",
-                    "#3498db",
-                    "#f39c12",
-                    "#9b59b6",
-                    "#1abc9c",
-                    "#e67e22",
-                    "#34495e",
-                ]
-
-                for i, (idx, peak_val) in enumerate(extrema):
-                    c_id = cluster_assignments[i]
-                    c_label = cluster_label_map[c_id]
-                    color = cluster_colors[c_id % len(cluster_colors)]
-                    ax_delta.annotate(
-                        f"{c_label}: {peak_val:.1f}",
-                        xy=(previous_day_data["Timestamp"].iloc[idx], peak_val),
-                        xytext=(0, 6 if peak_val >= 0 else -6),
-                        textcoords="offset points",
-                        ha="center",
-                        va="bottom" if peak_val >= 0 else "top",
-                        fontsize=8,
-                        color=color,
-                        bbox={
-                            "boxstyle": "round,pad=0.15",
-                            "fc": "white",
-                            "alpha": 0.75,
-                            "ec": color,
-                        },
+                if CALCULATE_IDLE_POWER and idle_power_kw > 0:
+                    ax_power.plot(
+                        previous_day_data["Timestamp"],
+                        previous_day_data["Power_kW"],
+                        linewidth=0.8,
+                        color="#95a5a6",
+                        alpha=0.5,
+                        label=f"Total Power (inc. {idle_power_kw:.2f} kW idle)",
                     )
+                    ax_power.plot(
+                        previous_day_data["Timestamp"],
+                        previous_day_data["Active_Power_kW"],
+                        linewidth=1.2,
+                        color="#3498db",
+                        label="Active Power",
+                    )
+                    ax_power.axhline(
+                        y=idle_power_kw,
+                        color="#e74c3c",
+                        linestyle="--",
+                        linewidth=1.5,
+                        alpha=0.7,
+                        label=f"Idle Power ({idle_power_kw:.2f} kW)",
+                    )
+                    previous_day_title_suffix = " - Active vs Total"
+                else:
+                    ax_power.plot(
+                        previous_day_data["Timestamp"],
+                        previous_day_data["Power_kW"],
+                        linewidth=1.2,
+                        color="#3498db",
+                        label="Total Power",
+                    )
+                    previous_day_title_suffix = ""
 
-                # Show DBSCAN grouping in presence vs |delta| space.
-                if extrema and cluster_stats:
-                    fig_cluster, ax_cluster = plt.subplots(figsize=(10, 4.5))
+                ax_power.set_ylabel("Power (kW)", fontsize=12)
+                ax_power.set_title(
+                    f"Minute-Level Power Consumption ({previous_day_start.date()}){previous_day_title_suffix}",
+                    fontsize=14,
+                    fontweight="bold",
+                )
+                ax_power.grid(True, alpha=0.3)
+                ax_power.legend(loc="upper left")
+
+                ax_delta.plot(
+                    previous_day_data["Timestamp"],
+                    raw_delta,
+                    linewidth=1.0,
+                    color="#95a5a6",
+                    alpha=0.45,
+                    label="Raw Delta (rolling 5-min)",
+                )
+                ax_delta.plot(
+                    previous_day_data["Timestamp"],
+                    smoothed_delta,
+                    linewidth=1.6,
+                    color="#8e44ad",
+                    label=smoothed_delta_label,
+                )
+                ax_delta.axhline(y=0.0, color="#7f8c8d", linestyle="--", linewidth=1.0)
+                if noise_threshold > 0:
+                    ax_delta.axhline(
+                        y=noise_threshold,
+                        color="#e67e22",
+                        linestyle=":",
+                        linewidth=1.0,
+                        alpha=0.9,
+                        label="Noise Threshold",
+                    )
+                    ax_delta.axhline(
+                        y=-noise_threshold,
+                        color="#e67e22",
+                        linestyle=":",
+                        linewidth=1.0,
+                        alpha=0.9,
+                    )
+                    above_noise = smoothed_delta.abs() >= noise_threshold
+
+                    # Collect significant local extrema above the noise threshold.
+                    smoothed_vals = smoothed_delta.to_numpy()
+                    above_noise_vals = above_noise.to_numpy()
+                    extrema = []  # list of (data_idx, value)
+                    for idx in range(1, len(smoothed_vals) - 1):
+                        if not above_noise_vals[idx]:
+                            continue
+                        is_local_max = (
+                            smoothed_vals[idx] >= smoothed_vals[idx - 1]
+                            and smoothed_vals[idx] > smoothed_vals[idx + 1]
+                        )
+                        is_local_min = (
+                            smoothed_vals[idx] <= smoothed_vals[idx - 1]
+                            and smoothed_vals[idx] < smoothed_vals[idx + 1]
+                        )
+                        if is_local_max or is_local_min:
+                            extrema.append((idx, float(smoothed_vals[idx])))
+
+                    # Cluster extrema with DBSCAN using |delta| only (no time binning).
+                    # This ties +/− events of similar magnitude and room-presence state.
+                    base_abs_eps = noise_threshold * 0.33
+                    dbscan_eps = 0.0
+                    cluster_assignments = {}  # extrema list index -> global cluster id
+                    cluster_stats = {}  # global cluster id -> {mean_abs, mean_presence}
+                    next_cluster_id = 0
+
+                    if dbscan_cls is not None and base_abs_eps > 0 and extrema:
+                        abs_values = [abs(val) for _, val in extrema]
+                        presence_values = [
+                            int(previous_day_data["Presence"].iloc[idx])
+                            for idx, _ in extrema
+                        ]
+
+                        abs_series = pd.Series(abs_values, dtype="float64")
+                        abs_std = float(abs_series.std(ddof=0))
+                        abs_mean = float(abs_series.mean())
+                        if abs_std <= 0:
+                            abs_std = 1.0
+
+                        presence_series = pd.Series(presence_values, dtype="float64")
+                        presence_std = float(presence_series.std(ddof=0))
+                        presence_mean = float(presence_series.mean())
+                        if presence_std <= 0:
+                            presence_std = 1.0
+
+                        presence_weight = 0.6
+                        feature_matrix = [
+                            [
+                                (abs_val - abs_mean) / abs_std,
+                                presence_weight
+                                * ((presence_val - presence_mean) / presence_std),
+                            ]
+                            for abs_val, presence_val in zip(
+                                abs_values, presence_values
+                            )
+                        ]
+
+                        dbscan_eps = max(0.4, base_abs_eps / abs_std)
+                        dbscan_labels = dbscan_cls(
+                            eps=dbscan_eps,
+                            min_samples=3,
+                        ).fit_predict(feature_matrix)
+
+                        for label in sorted(set(dbscan_labels)):
+                            member_indices = [
+                                i
+                                for i, member_label in enumerate(dbscan_labels)
+                                if member_label == label
+                            ]
+                            mean_abs = sum(
+                                abs(extrema[m][1]) for m in member_indices
+                            ) / len(member_indices)
+                            mean_presence = sum(
+                                int(previous_day_data["Presence"].iloc[extrema[m][0]])
+                                for m in member_indices
+                            ) / len(member_indices)
+                            cluster_stats[next_cluster_id] = {
+                                "mean_abs": mean_abs,
+                                "mean_presence": mean_presence,
+                            }
+                            for m in member_indices:
+                                cluster_assignments[m] = next_cluster_id
+                            next_cluster_id += 1
+                    else:
+                        # Fallback when DBSCAN isn't available: keep each extrema as its own cluster.
+                        for i, (idx, val) in enumerate(extrema):
+                            cluster_assignments[i] = next_cluster_id
+                            cluster_stats[next_cluster_id] = {
+                                "mean_abs": abs(float(val)),
+                                "mean_presence": float(
+                                    int(previous_day_data["Presence"].iloc[idx])
+                                ),
+                            }
+                            next_cluster_id += 1
+
+                    # Labels are ranked by absolute magnitude, regardless of event time.
+                    cluster_label_map = {}
+                    ordered_cluster_ids = sorted(
+                        cluster_stats,
+                        key=lambda cid: -cluster_stats[cid]["mean_abs"],
+                    )
+                    for rank, cid in enumerate(ordered_cluster_ids):
+                        cluster_label_map[cid] = chr(65 + rank)
+
+                    cluster_colors = [
+                        "#e74c3c",
+                        "#2ecc71",
+                        "#3498db",
+                        "#f39c12",
+                        "#9b59b6",
+                        "#1abc9c",
+                        "#e67e22",
+                        "#34495e",
+                    ]
 
                     for i, (idx, peak_val) in enumerate(extrema):
                         c_id = cluster_assignments[i]
-                        color = cluster_colors[c_id % len(cluster_colors)]
-                        presence_value = int(previous_day_data["Presence"].iloc[idx])
-                        if peak_val >= 0:
-                            jitter = 0.05
-                        else:
-                            jitter = -0.05
-                        ax_cluster.scatter(
-                            presence_value + jitter,
-                            abs(peak_val),
-                            color=color,
-                            alpha=0.85,
-                            s=45,
-                            marker="^" if peak_val >= 0 else "v",
-                            edgecolors="white",
-                            linewidths=0.5,
-                        )
-
-                    # Plot cluster centroids and labels.
-                    for c_id, stats in cluster_stats.items():
-                        color = cluster_colors[c_id % len(cluster_colors)]
                         c_label = cluster_label_map[c_id]
-                        ax_cluster.scatter(
-                            stats["mean_presence"],
-                            stats["mean_abs"],
-                            color=color,
-                            marker="D",
-                            s=90,
-                            edgecolors="black",
-                            linewidths=0.8,
-                            zorder=3,
-                        )
-                        ax_cluster.annotate(
-                            c_label,
-                            xy=(stats["mean_presence"], stats["mean_abs"]),
-                            xytext=(0, 7),
+                        color = cluster_colors[c_id % len(cluster_colors)]
+                        ax_delta.annotate(
+                            f"{c_label}: {peak_val:.1f}",
+                            xy=(previous_day_data["Timestamp"].iloc[idx], peak_val),
+                            xytext=(0, 6 if peak_val >= 0 else -6),
                             textcoords="offset points",
                             ha="center",
-                            va="bottom",
+                            va="bottom" if peak_val >= 0 else "top",
                             fontsize=8,
                             color=color,
                             bbox={
-                                "boxstyle": "round,pad=0.12",
+                                "boxstyle": "round,pad=0.15",
                                 "fc": "white",
-                                "alpha": 0.8,
+                                "alpha": 0.75,
                                 "ec": color,
                             },
                         )
 
-                    ax_cluster.set_title(
-                        (
-                            "DBSCAN Clusters: Presence vs |Delta| "
-                            f"(eps={dbscan_eps:.3f}, scaled features)"
-                        ),
-                        fontsize=12,
-                        fontweight="bold",
-                    )
-                    ax_cluster.set_xlabel("Lab Presence (0=Off, 1=On)")
-                    ax_cluster.set_ylabel("|Delta| (kW over last 5 min)")
-                    ax_cluster.set_xlim(-0.4, 1.4)
-                    ax_cluster.set_xticks([0, 1])
-                    ax_cluster.grid(True, alpha=0.3)
+                    # Show DBSCAN grouping in presence vs |delta| space.
+                    if extrema and cluster_stats:
+                        fig_cluster, ax_cluster = plt.subplots(figsize=(10, 4.5))
 
-                    cluster_plot = (
-                        plot_dir
-                        / "electricity_consumption_previous_day_cluster_presence_delta.png"
-                    )
-                    fig_cluster.tight_layout()
-                    fig_cluster.savefig(cluster_plot, dpi=150, bbox_inches="tight")
-                    plt.close(fig_cluster)
-                    plot_files["previous_day_cluster_presence_delta"] = (
-                        cluster_plot.name
-                    )
-                    print(f"Created plot: {cluster_plot}")
-            ax_delta.set_ylabel("Delta (kW over last 5 min)", fontsize=11)
-            ax_delta.set_xlabel("Time", fontsize=12)
-            ax_delta.grid(True, alpha=0.3)
-            ax_delta.legend(loc="upper left")
-            ax_delta.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-            plt.xticks(rotation=45, ha="right")
+                        for i, (idx, peak_val) in enumerate(extrema):
+                            c_id = cluster_assignments[i]
+                            color = cluster_colors[c_id % len(cluster_colors)]
+                            presence_value = int(
+                                previous_day_data["Presence"].iloc[idx]
+                            )
+                            if peak_val >= 0:
+                                jitter = 0.05
+                            else:
+                                jitter = -0.05
+                            ax_cluster.scatter(
+                                presence_value + jitter,
+                                abs(peak_val),
+                                color=color,
+                                alpha=0.85,
+                                s=45,
+                                marker="^" if peak_val >= 0 else "v",
+                                edgecolors="white",
+                                linewidths=0.5,
+                            )
 
-            plt.tight_layout()
-            previous_day_plot = plot_dir / "electricity_consumption_previous_day.png"
-            plt.savefig(previous_day_plot, dpi=150, bbox_inches="tight")
-            plt.close()
-            plot_files["previous_day"] = previous_day_plot.name
-            plot_files["previous_day_date"] = str(previous_day_start.date())
-            print(f"Created plot: {previous_day_plot}")
+                        # Plot cluster centroids and labels.
+                        for c_id, stats in cluster_stats.items():
+                            color = cluster_colors[c_id % len(cluster_colors)]
+                            c_label = cluster_label_map[c_id]
+                            ax_cluster.scatter(
+                                stats["mean_presence"],
+                                stats["mean_abs"],
+                                color=color,
+                                marker="D",
+                                s=90,
+                                edgecolors="black",
+                                linewidths=0.8,
+                                zorder=3,
+                            )
+                            ax_cluster.annotate(
+                                c_label,
+                                xy=(stats["mean_presence"], stats["mean_abs"]),
+                                xytext=(0, 7),
+                                textcoords="offset points",
+                                ha="center",
+                                va="bottom",
+                                fontsize=8,
+                                color=color,
+                                bbox={
+                                    "boxstyle": "round,pad=0.12",
+                                    "fc": "white",
+                                    "alpha": 0.8,
+                                    "ec": color,
+                                },
+                            )
+
+                        ax_cluster.set_title(
+                            (
+                                "DBSCAN Clusters: Presence vs |Delta| "
+                                f"(eps={dbscan_eps:.3f}, scaled features)"
+                            ),
+                            fontsize=12,
+                            fontweight="bold",
+                        )
+                        ax_cluster.set_xlabel("Lab Presence (0=Off, 1=On)")
+                        ax_cluster.set_ylabel("|Delta| (kW over last 5 min)")
+                        ax_cluster.set_xlim(-0.4, 1.4)
+                        ax_cluster.set_xticks([0, 1])
+                        ax_cluster.grid(True, alpha=0.3)
+
+                        cluster_plot = (
+                            plot_dir
+                            / "electricity_consumption_previous_day_cluster_presence_delta.png"
+                        )
+                        fig_cluster.tight_layout()
+                        fig_cluster.savefig(cluster_plot, dpi=150, bbox_inches="tight")
+                        plt.close(fig_cluster)
+                        plot_files["previous_day_cluster_presence_delta"] = (
+                            cluster_plot.name
+                        )
+                        print(f"Created plot: {cluster_plot}")
+                ax_delta.set_ylabel("Delta (kW over last 5 min)", fontsize=11)
+                ax_delta.set_xlabel("Time", fontsize=12)
+                ax_delta.grid(True, alpha=0.3)
+                ax_delta.legend(loc="upper left")
+                ax_delta.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+                plt.xticks(rotation=45, ha="right")
+
+                plt.tight_layout()
+                previous_day_plot = (
+                    plot_dir / "electricity_consumption_previous_day.png"
+                )
+                plt.savefig(previous_day_plot, dpi=150, bbox_inches="tight")
+                plt.close()
+                plot_files["previous_day"] = previous_day_plot.name
+                plot_files["previous_day_date"] = str(previous_day_start.date())
+                print(f"Created plot: {previous_day_plot}")
 
         # Add idle power info to plot_files for use in dashboard
         if CALCULATE_IDLE_POWER:
