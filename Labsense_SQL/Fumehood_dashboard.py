@@ -728,13 +728,19 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
     if df.empty:
         return plot_files
 
-    # Filter to last 7 days
-    last_week = datetime.now() - timedelta(days=7)
-    df = df[df["Timestamp"] >= last_week]  # type: ignore[assignment]
+    # Preserve bounded notebook-style ranges; otherwise keep dashboard behavior.
+    input_start = df["Timestamp"].min()
+    input_end = df["Timestamp"].max()
+    is_bounded_time_range = (input_end - input_start) <= timedelta(days=120)
 
-    if df.empty:
-        print("No data found in the last 7 days")
-        return plot_files
+    if not is_bounded_time_range:
+        # Filter to last 7 days for long-running dashboard views.
+        last_week = datetime.now() - timedelta(days=7)
+        df = df[df["Timestamp"] >= last_week]  # type: ignore[assignment]
+
+        if df.empty:
+            print("No data found in the last 7 days")
+            return plot_files
 
     # Get unique lab/sublab combinations
     lab_sublab_combinations = df[["LabId", "SubLabId"]].drop_duplicates()
