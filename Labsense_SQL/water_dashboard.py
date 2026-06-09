@@ -125,6 +125,10 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         print("matplotlib not available - skipping plots")
         return {}
 
+    # Use TrueType font embedding so PDF text stays editable in Adobe Illustrator.
+    plt.rcParams["pdf.fonttype"] = 42
+    plt.rcParams["ps.fonttype"] = 42
+
     plot_dir = Path(plot_dir)
     plot_dir.mkdir(parents=True, exist_ok=True)
     plot_files = {}
@@ -220,14 +224,16 @@ def create_plots(df: pd.DataFrame, plot_dir: Path) -> Dict[Tuple[int, int], str]
         ax.grid(True, alpha=0.3, axis="y")
         ax.xaxis.set_major_locator(ax_locator)
         ax.xaxis.set_major_formatter(ax_formatter)
-        ax.tick_params(axis="x", labelsize=8)
+        ax.tick_params(axis="x", labelsize=11)
 
-        fig.autofmt_xdate()
+        plt.setp(ax.get_xticklabels(), rotation=90, ha="center")
         plt.tight_layout()
 
         # Save plot
         plot_file = plot_dir / f"water_lab{lab_id}_sublab{sublab_id}.png"
         plt.savefig(plot_file, dpi=150, bbox_inches="tight")
+        plot_pdf_file = plot_file.with_suffix(".pdf")
+        plt.savefig(plot_pdf_file, bbox_inches="tight")
         plt.close()
 
         plot_files[key] = plot_file.name

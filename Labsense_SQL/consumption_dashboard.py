@@ -228,6 +228,10 @@ def create_plots(
         print("matplotlib not available - skipping plots")
         return {}
 
+    # Use TrueType font embedding so PDF text stays editable in Adobe Illustrator.
+    plt.rcParams["pdf.fonttype"] = 42
+    plt.rcParams["ps.fonttype"] = 42
+
     try:
         savgol_filter = importlib.import_module("scipy.signal").savgol_filter
     except Exception:
@@ -247,7 +251,10 @@ def create_plots(
     plot_files = {}
 
     def save_minute_level_power_plot(
-        power_df: pd.DataFrame, title: str, output_name: str
+        power_df: pd.DataFrame,
+        title: str,
+        output_name: str,
+        weekly_view: bool = False,
     ) -> str:
         """Create and save a minute-level power plot."""
         _fig, ax = plt.subplots(figsize=(14, 6))
@@ -290,15 +297,26 @@ def create_plots(
         ax.set_title(title, fontsize=14, fontweight="bold")
         ax.grid(True, alpha=0.3)
         ax.legend(loc="upper right")
-        ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
-        plt.xticks(rotation=45, ha="right")
+        if weekly_view:
+            # Reduce tick density for multi-day spans to avoid overlap.
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=6))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
+            ax.tick_params(axis="x", labelsize=11)
+            ax.tick_params(axis="y", labelsize=11)
+            plt.xticks(rotation=60, ha="right")
+        else:
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
+            plt.xticks(rotation=45, ha="right")
 
         plt.tight_layout()
         output_path = plot_dir / output_name
         plt.savefig(output_path, dpi=150, bbox_inches="tight")
+        output_pdf_path = output_path.with_suffix(".pdf")
+        plt.savefig(output_pdf_path, bbox_inches="tight")
         plt.close()
         print(f"Created plot: {output_path}")
+        print(f"Created plot: {output_pdf_path}")
         return output_path.name
 
     df_input = df.copy()
@@ -362,9 +380,12 @@ def create_plots(
     plt.tight_layout()
     daily_plot = plot_dir / "electricity_consumption_trends.png"
     plt.savefig(daily_plot, dpi=150, bbox_inches="tight")
+    daily_plot_pdf = daily_plot.with_suffix(".pdf")
+    plt.savefig(daily_plot_pdf, bbox_inches="tight")
     plt.close()
     plot_files["daily"] = daily_plot.name
     print(f"Created plot: {daily_plot}")
+    print(f"Created plot: {daily_plot_pdf}")
 
     if not is_bounded_time_range:
         # Create monthly consumption plot for long-running dashboard views.
@@ -396,9 +417,12 @@ def create_plots(
         plt.tight_layout()
         monthly_plot = plot_dir / "electricity_consumption_monthly.png"
         plt.savefig(monthly_plot, dpi=150, bbox_inches="tight")
+        monthly_plot_pdf = monthly_plot.with_suffix(".pdf")
+        plt.savefig(monthly_plot_pdf, bbox_inches="tight")
         plt.close()
         plot_files["monthly"] = monthly_plot.name
         print(f"Created plot: {monthly_plot}")
+        print(f"Created plot: {monthly_plot_pdf}")
 
     # Create granular consumption plot (last 7 days with minute-level data)
     if df_granular is not None and not df_granular.empty:
@@ -442,6 +466,7 @@ def create_plots(
                 df_gran,
                 f"Minute-Level Power Consumption (Last 7 Days){title_suffix}",
                 "electricity_consumption_granular.png",
+                weekly_view=True,
             )
 
             previous_working_day = get_previous_working_day()
@@ -798,11 +823,14 @@ def create_plots(
                         )
                         fig_cluster.tight_layout()
                         fig_cluster.savefig(cluster_plot, dpi=150, bbox_inches="tight")
+                        cluster_plot_pdf = cluster_plot.with_suffix(".pdf")
+                        fig_cluster.savefig(cluster_plot_pdf, bbox_inches="tight")
                         plt.close(fig_cluster)
                         plot_files["previous_day_cluster_presence_delta"] = (
                             cluster_plot.name
                         )
                         print(f"Created plot: {cluster_plot}")
+                        print(f"Created plot: {cluster_plot_pdf}")
                 ax_delta.set_ylabel("Delta (kW over last 5 min)", fontsize=11)
                 ax_delta.set_xlabel("Time", fontsize=12)
                 ax_delta.grid(True, alpha=0.3)
@@ -816,10 +844,13 @@ def create_plots(
                     plot_dir / "electricity_consumption_previous_day.png"
                 )
                 plt.savefig(previous_day_plot, dpi=150, bbox_inches="tight")
+                previous_day_plot_pdf = previous_day_plot.with_suffix(".pdf")
+                plt.savefig(previous_day_plot_pdf, bbox_inches="tight")
                 plt.close()
                 plot_files["previous_day"] = previous_day_plot.name
                 plot_files["previous_day_date"] = str(previous_day_start.date())
                 print(f"Created plot: {previous_day_plot}")
+                print(f"Created plot: {previous_day_plot_pdf}")
 
         # Add idle power info to plot_files for use in dashboard
         if CALCULATE_IDLE_POWER:
