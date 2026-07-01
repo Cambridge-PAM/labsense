@@ -42,7 +42,7 @@ load_dotenv(dotenv_path=env_path)
 
 # GPIO Configuration
 FLOW_SENSOR_GPIO_1 = int(os.getenv("FLOW_SENSOR_GPIO_1", "4"))
-FLOW_SENSOR_GPIO_2 = int(os.getenv("FLOW_SENSOR_GPIO_2", "17"))
+FLOW_SENSOR_GPIO_2 = int(os.getenv("FLOW_SENSOR_GPIO_2", "27"))
 LED_GPIO = int(os.getenv("LED_GPIO", "2"))
 FLOW_RATE_FACTOR = float(os.getenv("FLOW_RATE_FACTOR", "5"))
 
