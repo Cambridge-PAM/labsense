@@ -13,3 +13,6 @@
 *.pyc
 *.env
 *.log
+
+# Ignore PDF files
+*.pdf
