@@ -38,14 +38,12 @@ CONNECTION_STRING = (
 )
 
 # Lab ID to name mapping (same as Fumehood)
-LAB_NAMES = {1: "Lab -1.025", 2: "Lab -1.041"}
+LAB_NAMES = {1: "PAM Group", 2: "Other Group"}
 
 # Sink naming configuration: {(lab_id, sublab_id): "Sink Name"}
 SINK_NAMES = {
-    (1, 1): "Sink 1",
-    (1, 2): "Sink 2",
-    (2, 1): "Sink 1",
-    (2, 2): "Sink 2",
+    (1, 1): "-1_041 Sink 1",
+    (1, 3): "-1_025 Sink 1",
 }
 
 # Analysis window and validation constants
