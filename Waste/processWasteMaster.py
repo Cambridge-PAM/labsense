@@ -677,7 +677,12 @@ def create_html_dashboard(
 
 
 def main(argv=None):
-    plots_dir_default = os.getenv("PLOTS_DIR", "plots")
+    plots_dir_env = os.getenv("PLOTS_DIR")
+    plots_dir_help = (
+        plots_dir_env
+        if plots_dir_env
+        else "<excel-directory> (falls back to current directory if undetermined)"
+    )
     p = argparse.ArgumentParser()
     p.add_argument(
         "--excel", default=str(DEFAULT_PATH), help="Path to Waste Master Excel"
@@ -685,8 +690,11 @@ def main(argv=None):
     p.add_argument("--out", default="Waste.xlsx", help="Output Excel filename")
     p.add_argument(
         "--plot-dir",
-        default=plots_dir_default,
-        help=f"Directory to write plots to (default: {plots_dir_default})",
+        default=None,
+        help=(
+            "Directory to write plots to "
+            f"(default: PLOTS_DIR env var if set, otherwise {plots_dir_help})"
+        ),
     )
     p.add_argument("--no-plots", action="store_true", help="Disable plot generation")
     p.add_argument(
@@ -707,7 +715,14 @@ def main(argv=None):
 
     if not args.no_plots:
         out_path = Path(args.out)
-        plot_dir = Path(args.plot_dir)
+        if args.plot_dir:
+            plot_dir = Path(args.plot_dir)
+        elif plots_dir_env:
+            plot_dir = Path(plots_dir_env)
+        else:
+            # Default to Excel file directory (e.g., Z:\\LabsenseDashboard) when available.
+            excel_parent = Path(args.excel).expanduser().parent
+            plot_dir = excel_parent if str(excel_parent) else Path(".")
         out_prefix = out_path.stem
         create_summary_plots(res_df, out_prefix, plot_dir)
         if not args.no_dashboard:
