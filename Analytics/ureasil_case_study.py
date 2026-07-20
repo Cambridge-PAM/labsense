@@ -244,6 +244,28 @@ def plot_ureasil_case_study(
     tick_fontsize = 15
     legend_fontsize = 15
 
+    # Keep metric scales consistent between Bad and Good panels.
+    metric_limits: Dict[str, Tuple[float, float]] = {}
+    for metric_name in _METRIC_ORDER:
+        value_name = _METRIC_DISPLAY_NAMES[metric_name]
+        metric_values = pd.concat(
+            [
+                parsed_data[group_name][metric_name][value_name]
+                for group_name in _GROUP_ORDER
+            ],
+            ignore_index=True,
+        ).dropna()
+
+        if metric_values.empty:
+            metric_limits[metric_name] = (0.0, 1.0)
+            continue
+
+        min_value = float(metric_values.min())
+        max_value = float(metric_values.max())
+        span = max_value - min_value
+        pad = span * 0.05 if span > 0 else max(abs(max_value) * 0.05, 1.0)
+        metric_limits[metric_name] = (min_value - pad, max_value + pad)
+
     for col_index, group_name in enumerate(_GROUP_ORDER):
         group_data = parsed_data[group_name]
         sash_ax = base_axes[col_index]
@@ -305,6 +327,10 @@ def plot_ureasil_case_study(
             axis="y", colors=metric_colors["power"], labelsize=tick_fontsize
         )
         sash_ax.tick_params(axis="x", labelsize=tick_fontsize)
+
+        sash_ax.set_ylim(*metric_limits["sash"])
+        light_ax.set_ylim(*metric_limits["light"])
+        power_ax.set_ylim(*metric_limits["power"])
 
         sash_ax.grid(True, alpha=0.3)
         sash_ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
