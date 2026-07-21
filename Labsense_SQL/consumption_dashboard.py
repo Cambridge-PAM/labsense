@@ -26,6 +26,9 @@ except ModuleNotFoundError:
 # =============================================================================
 # Set to True to calculate idle power from 1am-5am consumption and show active consumption
 CALCULATE_IDLE_POWER = True
+# Exclude implausible minute-level power outliers from plots.
+PLOT_POWER_MIN_KW = 0.0
+PLOT_POWER_MAX_KW = 10.0
 # =============================================================================
 
 # Load environment variables from Labsense_SQL/.env
@@ -433,22 +436,40 @@ def create_plots(
         # Time = 1 minute = 1/60 hour, so Power = Energy / (1/60) = Energy * 60
         df_gran["Power_kW"] = df_gran["EnergyValue"] * 60
 
+        # Keep full-resolution data for summary stats, but remove outliers for plotting.
+        df_gran_plot = df_gran[
+            (df_gran["Power_kW"] >= PLOT_POWER_MIN_KW)
+            & (df_gran["Power_kW"] <= PLOT_POWER_MAX_KW)
+        ].copy()
+        excluded_points = len(df_gran) - len(df_gran_plot)
+        if excluded_points > 0:
+            print(
+                "Excluded "
+                f"{excluded_points} outlier point(s) outside "
+                f"{PLOT_POWER_MIN_KW:.1f}-{PLOT_POWER_MAX_KW:.1f} kW for plotting"
+            )
+        if df_gran_plot.empty:
+            print("No in-range minute-level points available after outlier filtering")
+            return plot_files
+
         # Calculate active power by subtracting idle power
-        df_gran["Active_Power_kW"] = df_gran["Power_kW"] - idle_power_kw
+        df_gran_plot["Active_Power_kW"] = df_gran_plot["Power_kW"] - idle_power_kw
         # Ensure non-negative
-        df_gran["Active_Power_kW"] = df_gran["Active_Power_kW"].clip(lower=0)
+        df_gran_plot["Active_Power_kW"] = df_gran_plot["Active_Power_kW"].clip(lower=0)
 
         title_suffix = (
             " - Active vs Total" if CALCULATE_IDLE_POWER and idle_power_kw > 0 else ""
         )
 
         if is_bounded_time_range:
-            daily_starts = sorted(df_gran["Timestamp"].dt.normalize().drop_duplicates())
+            daily_starts = sorted(
+                df_gran_plot["Timestamp"].dt.normalize().drop_duplicates()
+            )
             for day_start in daily_starts:
                 day_end = day_start + timedelta(days=1)
-                day_data = df_gran[
-                    (df_gran["Timestamp"] >= day_start)
-                    & (df_gran["Timestamp"] < day_end)
+                day_data = df_gran_plot[
+                    (df_gran_plot["Timestamp"] >= day_start)
+                    & (df_gran_plot["Timestamp"] < day_end)
                 ].copy()
                 if day_data.empty:
                     continue
@@ -463,7 +484,7 @@ def create_plots(
                 )
         else:
             plot_files["granular"] = save_minute_level_power_plot(
-                df_gran,
+                df_gran_plot,
                 f"Minute-Level Power Consumption (Last 7 Days){title_suffix}",
                 "electricity_consumption_granular.png",
                 weekly_view=True,
@@ -474,9 +495,9 @@ def create_plots(
                 previous_working_day, datetime.min.time()
             )
             previous_day_end = previous_day_start + timedelta(days=1)
-            previous_day_data = df_gran[
-                (df_gran["Timestamp"] >= previous_day_start)
-                & (df_gran["Timestamp"] < previous_day_end)
+            previous_day_data = df_gran_plot[
+                (df_gran_plot["Timestamp"] >= previous_day_start)
+                & (df_gran_plot["Timestamp"] < previous_day_end)
             ].copy()
             if not previous_day_data.empty:
                 previous_day_data = previous_day_data.sort_values(
