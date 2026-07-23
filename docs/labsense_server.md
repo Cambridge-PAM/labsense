@@ -67,7 +67,7 @@ conda env update -f environment.yml --prune
 ```
 
 !!! note
-  Use the `labsense` Conda environment for all server scripts, scheduled tasks, and service wrappers.
+    Use the `labsense` Conda environment for all server scripts, scheduled tasks, and service wrappers.
 
 ## 4. Configure Environment Variables
 
@@ -114,13 +114,13 @@ sudo systemctl status mosquitto
 
 - Open Windows Firewall with Advanced Security.
 - Create a New Inbound Rule:
-    a. Click on Inbound Rules in the left pane.
-    b. Click on New Rule... in the right pane.
-    c. Choose Port and click Next.
-    d. Select TCP and specify port 1883, then click Next.
-    e. Select Allow the connection, then click Next.
-    f. Choose the profiles this rule applies to (Domain, Private, Public), then click Next.
-    g. Name the rule (for example MQTT Port 1883), then click Finish.
+    - Click on Inbound Rules in the left pane.
+    - Click on New Rule... in the right pane.
+    - Choose Port and click Next.
+    - Select TCP and specify port 1883, then click Next.
+    - Select Allow the connection, then click Next.
+    - Choose the profiles this rule applies to (Domain, Private, Public), then click Next.
+    - Name the rule (for example MQTT Port 1883), then click Finish.
 
 ### 5.3 Basic Broker Configuration
 
@@ -179,7 +179,7 @@ LabSense publishers should send JSON payloads in this structure:
 ```
 
 !!! note
-  JSON does not allow trailing commas. Keep the payload as shown above to avoid parser errors in subscribers.
+    JSON does not allow trailing commas. Keep the payload as shown above to avoid parser errors in subscribers.
 
 ## 6. Set Up SQL Server
 

@@ -31,8 +31,8 @@ environment is required for debugging.
     - locale and time zone
 
 !!! note
-  A Raspberry Pi Zero 2 W is usually deployed over Wi-Fi, while a Raspberry Pi 4
-  can use either Ethernet or Wi-Fi.
+    A Raspberry Pi Zero 2 W is usually deployed over Wi-Fi, while a Raspberry Pi 4
+    can use either Ethernet or Wi-Fi.
 
 ### 2.2 First Boot and System Update
 
@@ -110,8 +110,8 @@ pip install -r /home/labsense/labsense/docs/requirements.txt
 ```
 
 !!! note
-  Some Raspberry Pi sensor packages may need additional system libraries or GPIO
-  access depending on the hardware attached to the device.
+    Some Raspberry Pi sensor packages may need additional system libraries or GPIO
+    access depending on the hardware attached to the device.
 
 ## 6. Create the Repo Update Script
 
@@ -166,9 +166,9 @@ chmod +x /home/labsense/startup.sh
 ```
 
 !!! note
-  In this example, `email_ip.py` runs first and `water-2taps.py` then starts the
-  long-running sensor process. If your deployment uses a different sensor script,
-  replace `water-2taps.py` with the correct entry point.
+    In this example, `email_ip.py` runs first and `water-2taps.py` then starts the
+    long-running sensor process. If your deployment uses a different sensor script,
+    replace `water-2taps.py` with the correct entry point.
 
 ## 8. Create the systemd Service
 
