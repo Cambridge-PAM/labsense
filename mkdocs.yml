@@ -6,6 +6,7 @@ nav:
   - Home: index.md
   - Getting Started: getting_started.md
   - LabSense Server: labsense_server.md
+  - LabSense Sensors: labsense_sensors.md
   - Water Monitoring: water.md
 plugins:
   - search
