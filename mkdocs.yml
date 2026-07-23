@@ -1,16 +1,12 @@
 site_name: LabSense
+site_description: Lab monitoring and analytics platform documentation
 theme:
   name: readthedocs
-  highlightjs: true
+nav:
+  - Home: index.md
+  - Getting Started: getting_started.md
+  - Water Monitoring: water.md
 plugins:
   - search
-  - mkdocstrings:
-      handlers:
-        # See: https://mkdocstrings.github.io/python/usage/
-        python:
-          options:
-            docstring_style: sphinx
 markdown_extensions:
-  - markdown_include.include:
-      base_path: .
   - admonition
