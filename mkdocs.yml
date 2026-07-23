@@ -5,8 +5,12 @@ theme:
 nav:
   - Home: index.md
   - Getting Started: getting_started.md
+  - LabSense Server: labsense_server.md
   - Water Monitoring: water.md
 plugins:
   - search
+extra_css:
+  - stylesheets/extra.css
 markdown_extensions:
   - admonition
+  - attr_list

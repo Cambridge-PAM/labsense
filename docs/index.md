@@ -31,6 +31,7 @@ LabSense combines multiple data pipelines:
 ## Documentation Map
 
 - Start with [Getting Started](getting_started.md) to set up and run core workflows.
+- See [LabSense Server](labsense_server.md) for server installation, MQTT (Mosquitto), and SQL Server setup.
 - See [Water Monitoring](water.md) for details of water-focused scripts and outputs.
 
 !!! note

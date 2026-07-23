@@ -23,6 +23,8 @@ Setting up the water flow tracker requires a turbine sensor installed in the wat
 
 The test setup used **YF-S201C water sensors**, along with adapters that allow them to be fitted to commercial taps.
 
+These can be purchased at [the Pi Hut](https://thepihut.com/products/clear-turbine-water-flow-sensor-with-3-pin-jst).
+
 The setup has been successfully implemented using:
 
 - Raspberry Pi Zero 2 W
@@ -38,13 +40,13 @@ The wires were protected using plastic heat-shrink tubing. It is recommended tha
 
 Install the water sensor in the tap with the arrow pointing in the direction of water flow. Ensure all fittings are secure to minimise leakage.
 
-![Water flow sensor installed on one tap.](img/tap-1-a.jpg)
+![Water flow sensor installed on one tap.](img/tap-1-a.jpg){ .img-50 }
 
-![Close-up of water flow sensor installed on one tap, showing the upwards arrow.](img/tap-1-b.jpg)
+![Close-up of water flow sensor installed on one tap, showing the upwards arrow.](img/tap-1-b.jpg){ .img-70 }
 
-![Water flow sensor wiring.](img/tap-1-c.jpg)
+![Water flow sensor wiring.](img/tap-1-c.jpg){ .img-50 }
 
-![Water flow sensor pin placement (one tap).](img/tap-1-d.jpg)
+![Water flow sensor pin placement (one tap).](img/tap-1-d.jpg){ .img-50 }
 
 The sensor has three wires:
 
@@ -93,9 +95,9 @@ Install the second sensor in the same way and connect it as follows:
 >
 > Ensure the software configuration matches the GPIO pin assignments used.
 
-![Water flow sensor installed on two taps.](img/tap-2-a.jpg)
+![Water flow sensor installed on two taps.](img/tap-2-a.jpg){ .img-50 }
 
-![Water flow sensor pin placement (two taps).](img/tap-2-b.jpg)
+![Water flow sensor pin placement (two taps).](img/tap-2-b.jpg){ .img-50 }
 
 #### Position the Raspberry Pi
 
