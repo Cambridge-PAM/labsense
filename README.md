@@ -1,5 +1,7 @@
 # LabSENSE
 
+[![Documentation Status](https://readthedocs.org/projects/labsense/badge/?version=latest)](https://labsense.readthedocs.io/en/latest/)
+
 A laboratory IoT monitoring and analytics platform for chemistry lab environments. Collects real-time sensor data from Raspberry Pi devices, retrieves chemical inventory data from a cloud API, processes hazardous waste records, and generates interactive HTML dashboards visualising all data streams.
 
 ## Architecture
@@ -20,11 +22,8 @@ A laboratory IoT monitoring and analytics platform for chemistry lab environment
 | `ChemInventory/` | Ad-hoc scripts querying the ChemInventory REST API by CAS number or GHS hazard code |
 | `Waste/` | Reads `Waste Master.xlsx`, proportionally allocates waste volumes across HP1–HP15 hazard codes, and generates per-HP dashboards |
 | `Balance Comms/` | Scans a barcode, reads weight from a serial balance (Denver Instruments SI-2002), and updates ChemInventory via REST API |
-| `RaspberryPi-4/` | Scheduled scripts pushing sensor streams (electricity, fumehood, GHS, order/waste lists) to Azure IoT Hub |
-| `RaspberryPi-Pico/` | MicroPython firmware — WiFi, Azure IoT Hub connection, BME68x environmental sensor |
 | `Labsense_Excel/` | Legacy Excel-based order and waste update scripts using `openpyxl` |
 | `tests/` | `pytest` unit tests for core processing logic |
-| `plots/` | Generated HTML dashboards and matplotlib PNGs |
 | `create_main_dashboard.py` | Generates the top-level HTML landing page linking all dashboards in `plots/` |
 
 ## Dependencies

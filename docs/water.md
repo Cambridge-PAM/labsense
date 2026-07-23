@@ -38,25 +38,13 @@ The wires were protected using plastic heat-shrink tubing. It is recommended tha
 
 Install the water sensor in the tap with the arrow pointing in the direction of water flow. Ensure all fittings are secure to minimise leakage.
 
-(fig-water-tap-1-a)=
-```{figure} img/tap-1-a.jpg
-:alt: Water flow sensor installed on one tap.
-:width: 70%
+![Water flow sensor installed on one tap.](img/tap-1-a.jpg)
 
-(fig-water-tap-1-b)=
-```{figure} img/tap-1-b.jpg
-:alt: Close-up of water flow sensor installed on one tap, showing the upwards arrow.
-:width: 70%
+![Close-up of water flow sensor installed on one tap, showing the upwards arrow.](img/tap-1-b.jpg)
 
-(fig-water-tap-1-c)=
-```{figure} img/tap-1-c.jpg
-:alt: Water flow sensor wiring.
-:width: 70%
+![Water flow sensor wiring.](img/tap-1-c.jpg)
 
-(fig-water-tap-1-d)=
-```{figure} img/tap-1-d.jpg
-:alt: Water flow sensor pin placement (one tap).
-:width: 70%
+![Water flow sensor pin placement (one tap).](img/tap-1-d.jpg)
 
 The sensor has three wires:
 
@@ -105,15 +93,9 @@ Install the second sensor in the same way and connect it as follows:
 >
 > Ensure the software configuration matches the GPIO pin assignments used.
 
-(fig-water-tap-2-a)=
-```{figure} img/tap-2-a.jpg
-:alt: Water flow sensor installed on two taps.
-:width: 70%
+![Water flow sensor installed on two taps.](img/tap-2-a.jpg)
 
-(fig-water-tap-2-b)=
-```{figure} img/tap-2-b.jpg
-:alt: Water flow sensor pin placement (two taps).
-:width: 70%
+![Water flow sensor pin placement (two taps).](img/tap-2-b.jpg)
 
 #### Position the Raspberry Pi
 
@@ -159,7 +141,7 @@ pip install RPi.GPIO
 
 #### Two Tap Script
 
-- https://github.com/Cambridge-PAM/labsense/blob/main/Labsense_Sensors/water-2taps.py
+- [water-2taps.py](https://github.com/Cambridge-PAM/labsense/blob/main/Labsense_Sensors/water-2taps.py)
 
 ## Running Water Dashboard Generation
 
