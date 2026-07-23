@@ -24,11 +24,11 @@ environment is required for debugging.
 1. Install Raspberry Pi Imager on your workstation.
 2. Flash the microSD card with Raspberry Pi OS Lite.
 3. In the Imager advanced options, set:
-   - hostname
-   - username and password
-   - Wi-Fi SSID and password if the device will use wireless networking
-   - SSH enabled
-   - locale and time zone
+    - hostname
+    - username and password
+    - Wi-Fi SSID and password if the device will use wireless networking
+    - SSH enabled
+    - locale and time zone
 
 !!! note
   A Raspberry Pi Zero 2 W is usually deployed over Wi-Fi, while a Raspberry Pi 4

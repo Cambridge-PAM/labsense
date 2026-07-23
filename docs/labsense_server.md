@@ -9,10 +9,10 @@ and running processing/dashboard scripts.
 - Operating system: [PLACEHOLDER: Windows/Linux version used in production]
 - CPU/RAM baseline: [PLACEHOLDER: minimum and recommended specs]
 - Network:
-  - Static IP or reserved DHCP lease
-  - Access to MQTT clients (sensor devices)
-  - Access to SQL Server instance
-  - Access to outbound APIs (if ChemInventory or external services are used)
+    - Static IP or reserved DHCP lease
+    - Access to MQTT clients (sensor devices)
+    - Access to SQL Server instance
+    - Access to outbound APIs (if ChemInventory or external services are used)
 
 ## 2. Install Conda and Python
 
@@ -114,13 +114,13 @@ sudo systemctl status mosquitto
 
 - Open Windows Firewall with Advanced Security.
 - Create a New Inbound Rule:
-  a. Click on Inbound Rules in the left pane.
-  b. Click on New Rule... in the right pane.
-  c. Choose Port and click Next.
-  d. Select TCP and specify port 1883, then click Next.
-  e. Select Allow the connection, then click Next.
-  f. Choose the profiles this rule applies to (Domain, Private, Public), then click Next.
-  g. Name the rule (for example MQTT Port 1883), then click Finish.
+    a. Click on Inbound Rules in the left pane.
+    b. Click on New Rule... in the right pane.
+    c. Choose Port and click Next.
+    d. Select TCP and specify port 1883, then click Next.
+    e. Select Allow the connection, then click Next.
+    f. Choose the profiles this rule applies to (Domain, Private, Public), then click Next.
+    g. Name the rule (for example MQTT Port 1883), then click Finish.
 
 ### 5.3 Basic Broker Configuration
 
@@ -290,10 +290,10 @@ Linux options:
 ## 9. Troubleshooting Quick Checks
 
 - MQTT connection failures:
-  - Check broker host/port/credentials and firewall rules.
+    - Check broker host/port/credentials and firewall rules.
 - SQL connection failures:
-  - Check server name, auth mode, ODBC driver availability, and encryption setting.
+    - Check server name, auth mode, ODBC driver availability, and encryption setting.
 - No new dashboard data:
-  - Confirm subscriber is receiving messages and SQL tables are updating.
+    - Confirm subscriber is receiving messages and SQL tables are updating.
 - Environment mismatch:
-  - Verify active environment and installed package versions.
+    - Verify active environment and installed package versions.
