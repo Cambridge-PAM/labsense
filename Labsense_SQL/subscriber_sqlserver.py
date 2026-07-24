@@ -263,7 +263,6 @@ def on_message(client, userdata, msg):
     try:
         # Decode message
         message_str = msg.payload.decode("utf-8")
-        logger.debug(f"Received message on topic {msg.topic}: {message_str}")
 
         # Convert single quotes to double quotes for JSON parsing
         message_str = message_str.replace("'", '"')
@@ -277,18 +276,31 @@ def on_message(client, userdata, msg):
             return
 
         # Extract common fields
+        ip_address = data.get("ipAddress", "unknown")
         lab_id = data.get("labId")
         sublab_id = data.get("sublabId")
         timestamp = data.get("measureTimestamp")
         sensor_readings = data.get("sensorReadings")
+
+        logger.debug(
+            "Received message from ipAddress=%s on topic %s: %s",
+            ip_address,
+            msg.topic,
+            message_str,
+        )
 
         # Validate required fields
         if not all(
             [lab_id is not None, sublab_id is not None, timestamp, sensor_readings]
         ):
             logger.warning(
-                f"Missing required fields in message on topic {msg.topic}. "
-                f"labId={lab_id}, sublabId={sublab_id}, timestamp={timestamp}"
+                "Missing required fields in message from ipAddress=%s on topic %s. "
+                "labId=%s, sublabId=%s, timestamp=%s",
+                ip_address,
+                msg.topic,
+                lab_id,
+                sublab_id,
+                timestamp,
             )
             return
 
@@ -297,10 +309,18 @@ def on_message(client, userdata, msg):
             try:
                 water = sensor_readings.get("water")
                 water_litres = normalize_value(water, 0.0) / 1000
-                logger.debug(f"Water reading: {water_litres:.3f}L")
+                logger.debug(
+                    "Water reading from ipAddress=%s: %.3fL",
+                    ip_address,
+                    water_litres,
+                )
                 insert_sql_water(lab_id, sublab_id, water_litres, timestamp)
             except Exception as e:
-                logger.error(f"Error processing water data: {e}")
+                logger.error(
+                    "Error processing water data from ipAddress=%s: %s",
+                    ip_address,
+                    e,
+                )
 
         # Process fumehood sensor data
         if "fumehood" in sensor_readings:
@@ -311,17 +331,27 @@ def on_message(client, userdata, msg):
                     light = fumehood_data.get("light")
                     airflow = fumehood_data.get("airflow")
                     logger.debug(
-                        f"Fumehood readings: distance={distance}mm, light={light}lux, airflow={airflow}"
+                        "Fumehood readings from ipAddress=%s: distance=%smm, light=%slux, airflow=%s",
+                        ip_address,
+                        distance,
+                        light,
+                        airflow,
                     )
                     insert_sql_fumehood(
                         lab_id, sublab_id, distance, light, airflow, timestamp
                     )
                 else:
                     logger.warning(
-                        f"Fumehood data is not a dictionary: {fumehood_data}"
+                        "Fumehood data from ipAddress=%s is not a dictionary: %s",
+                        ip_address,
+                        fumehood_data,
                     )
             except Exception as e:
-                logger.error(f"Error processing fumehood data: {e}")
+                logger.error(
+                    "Error processing fumehood data from ipAddress=%s: %s",
+                    ip_address,
+                    e,
+                )
 
     except Exception as e:
         logger.error(f"Unexpected error processing message: {e}", exc_info=True)
