@@ -11,6 +11,7 @@ from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime
 from pathlib import Path
 import signal
+import socket
 import statistics
 import subprocess
 import sys
@@ -504,6 +505,32 @@ def publish_mqtt(msg_payload: str, retry_count: int = 3) -> bool:
     return False
 
 
+def get_pi_ip_address() -> str:
+    """Get the Pi IP address for inclusion in MQTT payloads."""
+    try:
+        result = subprocess.run(
+            ["ip", "addr", "show", "wlan0"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if "inet " in line and "inet6" not in line:
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        return parts[1].split("/")[0]
+    except (FileNotFoundError, subprocess.SubprocessError) as error:
+        logger.warning("Unable to read wlan0 IP address: %s", error)
+
+    try:
+        return socket.gethostbyname(socket.gethostname())
+    except socket.gaierror as error:
+        logger.warning("Unable to resolve hostname IP address: %s", error)
+        return "unknown"
+
+
 def reboot_pi(reason: str):
     """Reboot Raspberry Pi after critical sensor fault"""
     logger.critical(reason)
@@ -802,10 +829,12 @@ async def main():  # pylint: disable=too-many-locals,too-many-branches,too-many-
 
             # Only send if we have at least one valid sensor reading
             if distance_valid or light_valid:
+                pi_ip_address = get_pi_ip_address()
                 msg_payload = str(
                     {
                         "labId": LAB_ID,
                         "sublabId": SUBLAB_ID,
+                        "ipAddress": pi_ip_address,
                         "sensorReadings": {
                             "fumehood": {
                                 "distance": distance if distance_valid else -1.0,
