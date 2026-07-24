@@ -525,10 +525,40 @@ def get_pi_ip_address() -> str:
         logger.warning("Unable to read wlan0 IP address: %s", error)
 
     try:
-        return socket.gethostbyname(socket.gethostname())
+        result = subprocess.run(
+            ["ifconfig", "wlan0"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("inet "):
+                    parts = stripped.split()
+                    if len(parts) >= 2:
+                        return parts[1]
+    except (FileNotFoundError, subprocess.SubprocessError) as error:
+        logger.warning("Unable to read wlan0 IP address via ifconfig: %s", error)
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect((MQTT_SERVER, MQTT_PORT))
+            routed_ip = sock.getsockname()[0]
+            if not routed_ip.startswith("127."):
+                return routed_ip
+    except OSError as error:
+        logger.warning("Unable to determine routed IP address: %s", error)
+
+    try:
+        hostname_ip = socket.gethostbyname(socket.gethostname())
+        if not hostname_ip.startswith("127."):
+            return hostname_ip
     except socket.gaierror as error:
         logger.warning("Unable to resolve hostname IP address: %s", error)
-        return "unknown"
+
+    return "unknown"
 
 
 def reboot_pi(reason: str):

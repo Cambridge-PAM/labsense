@@ -82,11 +82,11 @@ shutdown_flag = threading.Event()
 gpio_initialized = False
 
 
-def get_pi_ip_address() -> str:
-    """Get the Pi IP address for inclusion in MQTT payloads."""
+def _get_interface_ip(interface_name: str) -> Optional[str]:
+    """Read the IPv4 address assigned to a network interface."""
     try:
         result = subprocess.run(
-            ["ip", "addr", "show", "wlan0"],
+            ["ip", "addr", "show", interface_name],
             capture_output=True,
             text=True,
             timeout=5,
@@ -99,13 +99,58 @@ def get_pi_ip_address() -> str:
                     if len(parts) >= 2:
                         return parts[1].split("/")[0]
     except (FileNotFoundError, subprocess.SubprocessError) as e:
-        logger.warning(f"Unable to read wlan0 IP address: {e}")
+        logger.warning(f"Unable to read {interface_name} IP address: {e}")
 
     try:
-        return socket.gethostbyname(socket.gethostname())
+        result = subprocess.run(
+            ["ifconfig", interface_name],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("inet "):
+                    parts = stripped.split()
+                    if len(parts) >= 2:
+                        return parts[1]
+    except (FileNotFoundError, subprocess.SubprocessError) as e:
+        logger.warning(f"Unable to read {interface_name} IP address via ifconfig: {e}")
+
+    return None
+
+
+def _get_routed_ip(target_host: str, target_port: int) -> Optional[str]:
+    """Infer the outbound local IP address used to reach a target host."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect((target_host, target_port))
+            return sock.getsockname()[0]
+    except OSError as e:
+        logger.warning(f"Unable to determine routed IP address: {e}")
+        return None
+
+
+def get_pi_ip_address() -> str:
+    """Get the Pi IP address for inclusion in MQTT payloads."""
+    interface_ip = _get_interface_ip("wlan0")
+    if interface_ip:
+        return interface_ip
+
+    routed_ip = _get_routed_ip(MQTT_SERVER, MQTT_PORT)
+    if routed_ip and not routed_ip.startswith("127."):
+        return routed_ip
+
+    try:
+        hostname_ip = socket.gethostbyname(socket.gethostname())
+        if not hostname_ip.startswith("127."):
+            return hostname_ip
     except socket.gaierror as e:
         logger.warning(f"Unable to resolve hostname IP address: {e}")
-        return "unknown"
+
+    return "unknown"
 
 
 def initialize_gpio() -> bool:
