@@ -9,6 +9,8 @@ from datetime import datetime
 import RPi.GPIO as GPIO  # pylint: disable=import-error
 import paho.mqtt.publish as publish
 import os
+import socket
+import subprocess
 import sys
 import signal
 from pathlib import Path
@@ -78,6 +80,32 @@ shutdown_flag = threading.Event()
 
 # GPIO initialization flag
 gpio_initialized = False
+
+
+def get_pi_ip_address() -> str:
+    """Get the Pi IP address for inclusion in MQTT payloads."""
+    try:
+        result = subprocess.run(
+            ["ip", "addr", "show", "wlan0"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if "inet " in line and "inet6" not in line:
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        return parts[1].split("/")[0]
+    except (FileNotFoundError, subprocess.SubprocessError) as e:
+        logger.warning(f"Unable to read wlan0 IP address: {e}")
+
+    try:
+        return socket.gethostbyname(socket.gethostname())
+    except socket.gaierror as e:
+        logger.warning(f"Unable to resolve hostname IP address: {e}")
+        return "unknown"
 
 
 def initialize_gpio() -> bool:
@@ -265,10 +293,12 @@ async def main():
 
             # Only send if water detected
             if water_volume > 0.0:
+                pi_ip_address = get_pi_ip_address()
                 msg_payload = str(
                     {
                         "labId": LAB_ID,
                         "sublabId": SUBLAB_ID,
+                        "ipAddress": pi_ip_address,
                         "sensorReadings": {"water": float(water_volume)},
                         "measureTimestamp": time_send.strftime("%Y-%m-%d %H:%M:%S"),
                     }
