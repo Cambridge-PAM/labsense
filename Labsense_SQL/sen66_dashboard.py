@@ -33,6 +33,11 @@ CONNECTION_STRING = (
 
 LAB_NAMES = {1: "PAM Group", 2: "Other Group"}
 
+# SEN66 sensor naming by SubLabId
+SEN66_SUBLAB_NAMES = {
+    3: "-1_025 Lab",
+}
+
 
 def get_lab_display_name(lab_id: int) -> str:
     """Get display name for a lab ID."""
@@ -41,7 +46,8 @@ def get_lab_display_name(lab_id: int) -> str:
 
 def get_display_label(lab_id: int, sublab_id: int) -> str:
     """Get formatted display label for a lab/sublab combination."""
-    return f"SEN66 Sensor {sublab_id} ({get_lab_display_name(lab_id)})"
+    sensor_name = SEN66_SUBLAB_NAMES.get(sublab_id, f"SEN66 Sensor {sublab_id}")
+    return f"{sensor_name} ({get_lab_display_name(lab_id)})"
 
 
 def fetch_sen66_data(connection_string: str, days: int = 7) -> pd.DataFrame:
@@ -314,6 +320,7 @@ def create_html_dashboard(
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
+    plots_dir_default = os.getenv("PLOTS_DIR", "plots")
     parser = argparse.ArgumentParser(
         description="Generate SEN66 dashboard from SQL data"
     )
@@ -325,8 +332,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--plot-dir",
-        default=str(Path(__file__).resolve().parents[1] / "plots" / "sen66"),
-        help="Directory to write plot images and dashboard HTML",
+        default=plots_dir_default,
+        help=f"Directory for plots (default: {plots_dir_default})",
     )
     parser.add_argument(
         "--out-file",
