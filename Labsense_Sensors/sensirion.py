@@ -185,17 +185,6 @@ def read_sensor_values(sensor: Any) -> dict[str, Optional[float]]:
     }
 
 
-def wait_for_data_ready(sensor: Any, timeout_seconds: float = 2.5) -> bool:
-    """Wait until the sensor reports fresh data is ready."""
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline and not shutdown_flag:
-        padding, data_ready = sensor.get_data_ready()
-        if data_ready:
-            return True
-        time.sleep(0.1)
-    return False
-
-
 def build_payload(measurement: dict[str, Optional[float]]) -> str:
     """Build a JSON payload for MQTT publication."""
     payload = {
@@ -273,11 +262,6 @@ def run() -> None:
 
             while not shutdown_flag:
                 try:
-                    if not wait_for_data_ready(sensor):
-                        logger.warning("SEN66 data not ready before timeout; retrying")
-                        time.sleep(MEASUREMENT_INTERVAL)
-                        continue
-
                     measurement = read_sensor_values(sensor)
                     payload = build_payload(measurement)
 
@@ -300,19 +284,10 @@ def run() -> None:
                     break
                 except I2cChecksumError as error:
                     logger.warning("SEN66 checksum error while reading data: %s", error)
-                    time.sleep(0.5)
-                    continue
-                except Exception as error:
-                    if isinstance(
-                        error, (OSError, RuntimeError, ValueError, TypeError)
-                    ):
-                        logger.error(
-                            "Error in measurement loop: %s", error, exc_info=True
-                        )
-                        time.sleep(5)
-                        continue
-
-                    raise
+                    time.sleep(MEASUREMENT_INTERVAL)
+                except (OSError, RuntimeError, ValueError, TypeError) as error:
+                    logger.error("Error in measurement loop: %s", error, exc_info=True)
+                    time.sleep(MEASUREMENT_INTERVAL)
 
     except (OSError, RuntimeError, ValueError, TypeError) as error:
         logger.error("Fatal sensor error: %s", error, exc_info=True)
