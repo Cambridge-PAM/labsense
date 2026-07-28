@@ -44,6 +44,13 @@ try:
 except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
     Sen66Device = None
 
+try:
+    from sensirion_i2c_driver.errors import (  # type: ignore[reportMissingImports]
+        I2cChecksumError,
+    )
+except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
+    I2cChecksumError = None
+
 
 script_dir = Path(__file__).parent
 env_path = script_dir / ".env"
@@ -170,19 +177,40 @@ def get_pi_ip_address() -> str:
 
 def read_sensor_values(sensor: Any) -> dict[str, Optional[float]]:
     """Read a single measurement from the SEN66."""
-    values = sensor.read_measured_values()
+    (
+        mass_concentration_pm1p0,
+        mass_concentration_pm2p5,
+        mass_concentration_pm4p0,
+        mass_concentration_pm10p0,
+        ambient_humidity,
+        ambient_temperature,
+        voc_index,
+        nox_index,
+        co2,
+    ) = sensor.read_measured_values_as_integers()
 
     return {
-        "temperature": _value_or_none(values.temperature),
-        "humidity": _value_or_none(values.ambient_humidity),
-        "co2": _value_or_none(values.co2),
-        "pm1": _value_or_none(values.mass_concentration_pm1_0),
-        "pm25": _value_or_none(values.mass_concentration_pm2_5),
-        "pm4": _value_or_none(values.mass_concentration_pm4_0),
-        "pm10": _value_or_none(values.mass_concentration_pm10_0),
-        "voc": _value_or_none(values.voc_index),
-        "nox": _value_or_none(values.nox_index),
+        "temperature": _value_or_none(ambient_temperature / 200.0),
+        "humidity": _value_or_none(ambient_humidity / 100.0),
+        "co2": _value_or_none(co2),
+        "pm1": _value_or_none(mass_concentration_pm1p0 / 10.0),
+        "pm25": _value_or_none(mass_concentration_pm2p5 / 10.0),
+        "pm4": _value_or_none(mass_concentration_pm4p0 / 10.0),
+        "pm10": _value_or_none(mass_concentration_pm10p0 / 10.0),
+        "voc": _value_or_none(voc_index / 10.0),
+        "nox": _value_or_none(nox_index / 10.0),
     }
+
+
+def wait_for_data_ready(sensor: Any, timeout_seconds: float = 2.5) -> bool:
+    """Wait until the sensor reports fresh data is ready."""
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline and not shutdown_flag:
+        padding, data_ready = sensor.get_data_ready()
+        if data_ready:
+            return True
+        time.sleep(0.1)
+    return False
 
 
 def build_payload(measurement: dict[str, Optional[float]]) -> str:
@@ -263,12 +291,22 @@ def run() -> None:
                 crc=CrcCalculator(8, 0x31, 0xFF, 0x0),
             )
             sensor = Sen66Device(channel)
+            try:
+                sensor.stop_measurement()
+                time.sleep(0.05)
+            except Exception:
+                pass
             sensor.start_continuous_measurement()
             time.sleep(1.0)
             logger.info("SEN66 continuous measurement started")
 
             while not shutdown_flag:
                 try:
+                    if not wait_for_data_ready(sensor):
+                        logger.warning("SEN66 data not ready before timeout; retrying")
+                        time.sleep(MEASUREMENT_INTERVAL)
+                        continue
+
                     measurement = read_sensor_values(sensor)
                     payload = build_payload(measurement)
 
@@ -292,6 +330,16 @@ def run() -> None:
                 except (OSError, RuntimeError, ValueError, TypeError) as error:
                     logger.error("Error in measurement loop: %s", error, exc_info=True)
                     time.sleep(5)
+                except Exception as error:
+                    if I2cChecksumError is not None and isinstance(
+                        error, I2cChecksumError
+                    ):
+                        logger.warning(
+                            "SEN66 checksum error while reading data: %s", error
+                        )
+                        time.sleep(0.5)
+                        continue
+                    raise
 
     except (OSError, RuntimeError, ValueError, TypeError) as error:
         logger.error("Fatal sensor error: %s", error, exc_info=True)
