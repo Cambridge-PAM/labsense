@@ -24,11 +24,20 @@ import paho.mqtt.publish as publish
 try:
     from sensirion_i2c_driver import (  # type: ignore[reportMissingImports]
         I2cConnection,
+        CrcCalculator,
         LinuxI2cTransceiver,
     )
 except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
     I2cConnection = None
+    CrcCalculator = None
     LinuxI2cTransceiver = None
+
+try:
+    from sensirion_driver_adapters.i2c_adapter.i2c_channel import (  # type: ignore[reportMissingImports]
+        I2cChannel,
+    )
+except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
+    I2cChannel = None
 
 try:
     from sensirion_i2c_sen66 import Sen66Device  # type: ignore[reportMissingImports]
@@ -234,16 +243,28 @@ def run() -> None:
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    if I2cConnection is None or LinuxI2cTransceiver is None or Sen66Device is None:
+    if (
+        I2cConnection is None
+        or CrcCalculator is None
+        or I2cChannel is None
+        or LinuxI2cTransceiver is None
+        or Sen66Device is None
+    ):
         logger.error(
-            "Sensirion I2C dependencies are not installed. Install sensirion-i2c-driver and sensirion-i2c-sen66 to enable SEN66 monitoring."
+            "Sensirion I2C dependencies are not installed. Install sensirion-i2c-driver, sensirion-driver-adapters, and sensirion-i2c-sen66 to enable SEN66 monitoring."
         )
         sys.exit(1)
 
     try:
         with LinuxI2cTransceiver("/dev/i2c-1") as transceiver:
-            sensor = Sen66Device(I2cConnection(transceiver))
+            channel = I2cChannel(
+                I2cConnection(transceiver),
+                slave_address=0x6B,
+                crc=CrcCalculator(8, 0x31, 0xFF, 0x0),
+            )
+            sensor = Sen66Device(channel)
             sensor.start_continuous_measurement()
+            time.sleep(1.0)
             logger.info("SEN66 continuous measurement started")
 
             while not shutdown_flag:
