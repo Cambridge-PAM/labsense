@@ -20,13 +20,22 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / "Labsense_SQL" / ".env")
 
 
+DASHBOARD_NAME_OVERRIDES = {
+    "sen66": "Air Quality",
+}
+
+
 def scan_dashboards(plot_dir: Path) -> List[Dict[str, str]]:
     """Scan the plots directory for dashboard HTML files."""
     dashboards = []
 
     # Look for HTML dashboard files
     for html_file in plot_dir.glob("*dashboard.html"):
-        name = html_file.stem.replace("_dashboard", "").replace("_", " ").title()
+        dashboard_key = html_file.stem.replace("_dashboard", "")
+        name = DASHBOARD_NAME_OVERRIDES.get(
+            dashboard_key,
+            dashboard_key.replace("_", " ").title(),
+        )
         dashboards.append(
             {
                 "name": name,
