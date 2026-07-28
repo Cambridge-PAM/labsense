@@ -120,12 +120,26 @@ def create_plots(
             linewidth=1.5,
             label="Temperature",
         )
+        ax1.scatter(
+            group_df["Timestamp"],
+            group_df["Temperature"],
+            color="#e74c3c",
+            s=14,
+            alpha=0.75,
+        )
         ax2.plot(
             group_df["Timestamp"],
             group_df["Humidity"],
             color="#3498db",
             linewidth=1.5,
             label="Relative Humidity",
+        )
+        ax2.scatter(
+            group_df["Timestamp"],
+            group_df["Humidity"],
+            color="#3498db",
+            s=14,
+            alpha=0.75,
         )
 
         ax1.set_title(f"{label}: Temperature and Relative Humidity (last 7 days)")
@@ -153,6 +167,10 @@ def create_plots(
         ax.plot(group_df["Timestamp"], group_df["Pm25"], linewidth=1.3, label="PM2.5")
         ax.plot(group_df["Timestamp"], group_df["Pm4"], linewidth=1.3, label="PM4")
         ax.plot(group_df["Timestamp"], group_df["Pm10"], linewidth=1.3, label="PM10")
+        ax.scatter(group_df["Timestamp"], group_df["Pm1"], s=12, alpha=0.65)
+        ax.scatter(group_df["Timestamp"], group_df["Pm25"], s=12, alpha=0.65)
+        ax.scatter(group_df["Timestamp"], group_df["Pm4"], s=12, alpha=0.65)
+        ax.scatter(group_df["Timestamp"], group_df["Pm10"], s=12, alpha=0.65)
 
         ax.set_title(f"{label}: Particulate Matter (last 7 days)")
         ax.set_xlabel("Time")
@@ -172,6 +190,13 @@ def create_plots(
         # 3) CO2 with ppm axis
         fig, ax = plt.subplots(figsize=(12, 5))
         ax.plot(group_df["Timestamp"], group_df["Co2"], color="#2ecc71", linewidth=1.5)
+        ax.scatter(
+            group_df["Timestamp"],
+            group_df["Co2"],
+            color="#2ecc71",
+            s=14,
+            alpha=0.75,
+        )
         ax.set_title(f"{label}: CO2 (last 7 days)")
         ax.set_xlabel("Time")
         ax.set_ylabel("CO2 (ppm)")
@@ -195,12 +220,26 @@ def create_plots(
             linewidth=1.5,
             label="VOC",
         )
+        ax.scatter(
+            group_df["Timestamp"],
+            group_df["Voc"],
+            color="#9b59b6",
+            s=14,
+            alpha=0.75,
+        )
         ax.plot(
             group_df["Timestamp"],
             group_df["Nox"],
             color="#e67e22",
             linewidth=1.5,
             label="NOx",
+        )
+        ax.scatter(
+            group_df["Timestamp"],
+            group_df["Nox"],
+            color="#e67e22",
+            s=14,
+            alpha=0.75,
         )
         ax.set_title(f"{label}: VOC and NOx Index (last 7 days)")
         ax.set_xlabel("Time")
@@ -238,14 +277,17 @@ def create_html_dashboard(
         '<html lang="en">',
         "<head>",
         '  <meta charset="utf-8" />',
-        "  <title>SEN66 Dashboard</title>",
+        "  <title>Air Quality Dashboard</title>",
         "  <style>",
         "    body { font-family: Arial, Helvetica, sans-serif; margin: 20px; background: #f5f5f5; }",
         "    .container { max-width: 1400px; margin: 0 auto; }",
-        "    .header { background: white; border-radius: 10px; padding: 25px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }",
-        "    .section { background: white; border-radius: 10px; padding: 25px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }",
-        "    h1, h2, h3 { color: #2c3e50; }",
-        "    img { max-width: 100%; height: auto; border-radius: 8px; margin: 10px 0 20px 0; border: 1px solid #e0e0e0; }",
+        "    .header { background: white; border-radius: 10px; padding: 30px; margin-bottom: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }",
+        "    .header h1 { margin: 0 0 10px 0; color: #2c3e50; }",
+        "    .header p { margin: 0; color: #7f8c8d; }",
+        "    .section { background: white; border-radius: 10px; padding: 25px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }",
+        "    .section h2 { margin: 0 0 20px 0; color: #34495e; border-bottom: 2px solid #3498db; padding-bottom: 10px; }",
+        "    .section h3 { margin: 20px 0 10px 0; color: #34495e; }",
+        "    img { max-width: 100%; height: auto; border-radius: 8px; margin: 15px 0; }",
         "    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }",
         "    .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; }",
         "    .stat-card.timestamp { background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%); }",
@@ -257,12 +299,16 @@ def create_html_dashboard(
         "    .stat-card h3 { margin: 0 0 5px 0; font-size: 0.9em; opacity: 0.9; }",
         "    .stat-card .value { font-size: 1.45em; font-weight: bold; line-height: 1.2; }",
         "    .stat-card .unit { font-size: 0.8em; opacity: 0.9; margin-top: 3px; }",
+        "    .top-nav { margin-bottom: 15px; }",
+        "    .back-button { display: inline-block; background: #2c3e50; color: white; text-decoration: none; padding: 10px 14px; border-radius: 6px; font-weight: 600; }",
+        "    .back-button:hover { background: #1f2d3a; }",
         "  </style>",
         "</head>",
         "<body>",
         '  <div class="container">',
+        '    <div class="top-nav"><a href="index.html" class="back-button">&larr; Back to Home</a></div>',
         '    <div class="header">',
-        "      <h1>SEN66 Dashboard</h1>",
+        "      <h1>🌬️ Air Quality Dashboard</h1>",
         "      <p>Past-week trends for temperature, humidity, PM, CO2, VOC, and NOx.</p>",
         f"      <p><strong>Generated:</strong> {generated_time}</p>",
         f"      <p><strong>Total data points:</strong> {len(df)}</p>",
