@@ -71,7 +71,7 @@ LAB_ID = int(os.getenv("LAB_ID", "1"))
 SUBLAB_ID = int(os.getenv("SUBLAB_ID", "3"))
 
 # Measurement Configuration
-MEASUREMENT_INTERVAL = int(os.getenv("MEASUREMENT_INTERVAL", "5"))
+MEASUREMENT_INTERVAL = int(os.getenv("MEASUREMENT_INTERVAL", "300"))
 PUBLISH_RETRY_COUNT = int(os.getenv("MQTT_RETRY_COUNT", "3"))
 
 if not MQTT_SERVER:
