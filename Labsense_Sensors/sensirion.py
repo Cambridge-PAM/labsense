@@ -257,11 +257,16 @@ def run() -> None:
             except Exception:
                 pass
             sensor.start_continuous_measurement()
-            time.sleep(1.0)
+            time.sleep(1.1)
             logger.info("SEN66 continuous measurement started")
 
             while not shutdown_flag:
                 try:
+                    _, data_ready = sensor.get_data_ready()
+                    if not data_ready:
+                        time.sleep(MEASUREMENT_INTERVAL)
+                        continue
+
                     measurement = read_sensor_values(sensor)
                     payload = build_payload(measurement)
 
