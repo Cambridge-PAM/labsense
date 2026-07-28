@@ -21,35 +21,18 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 import paho.mqtt.publish as publish
 
-try:
-    from sensirion_i2c_driver import (  # type: ignore[reportMissingImports]
-        I2cConnection,
-        CrcCalculator,
-        LinuxI2cTransceiver,
-    )
-except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
-    I2cConnection = None
-    CrcCalculator = None
-    LinuxI2cTransceiver = None
-
-try:
-    from sensirion_driver_adapters.i2c_adapter.i2c_channel import (  # type: ignore[reportMissingImports]
-        I2cChannel,
-    )
-except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
-    I2cChannel = None
-
-try:
-    from sensirion_i2c_sen66 import Sen66Device  # type: ignore[reportMissingImports]
-except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
-    Sen66Device = None
-
-try:
-    from sensirion_i2c_driver.errors import (  # type: ignore[reportMissingImports]
-        I2cChecksumError,
-    )
-except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
-    I2cChecksumError = None
+from sensirion_driver_adapters.i2c_adapter.i2c_channel import (  # type: ignore[reportMissingImports]
+    I2cChannel,
+)
+from sensirion_i2c_driver import (  # type: ignore[reportMissingImports]
+    CrcCalculator,
+    I2cConnection,
+    LinuxI2cTransceiver,
+)
+from sensirion_i2c_driver.errors import (  # type: ignore[reportMissingImports]
+    I2cChecksumError,
+)
+from sensirion_i2c_sen66 import Sen66Device  # type: ignore[reportMissingImports]
 
 
 script_dir = Path(__file__).parent
@@ -271,18 +254,6 @@ def run() -> None:
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    if (
-        I2cConnection is None
-        or CrcCalculator is None
-        or I2cChannel is None
-        or LinuxI2cTransceiver is None
-        or Sen66Device is None
-    ):
-        logger.error(
-            "Sensirion I2C dependencies are not installed. Install sensirion-i2c-driver, sensirion-driver-adapters, and sensirion-i2c-sen66 to enable SEN66 monitoring."
-        )
-        sys.exit(1)
-
     try:
         with LinuxI2cTransceiver("/dev/i2c-1") as transceiver:
             channel = I2cChannel(
@@ -327,18 +298,20 @@ def run() -> None:
                 except KeyboardInterrupt:
                     logger.info("Keyboard interrupt received")
                     break
-                except (OSError, RuntimeError, ValueError, TypeError) as error:
-                    logger.error("Error in measurement loop: %s", error, exc_info=True)
-                    time.sleep(5)
+                except I2cChecksumError as error:
+                    logger.warning("SEN66 checksum error while reading data: %s", error)
+                    time.sleep(0.5)
+                    continue
                 except Exception as error:
-                    if I2cChecksumError is not None and isinstance(
-                        error, I2cChecksumError
+                    if isinstance(
+                        error, (OSError, RuntimeError, ValueError, TypeError)
                     ):
-                        logger.warning(
-                            "SEN66 checksum error while reading data: %s", error
+                        logger.error(
+                            "Error in measurement loop: %s", error, exc_info=True
                         )
-                        time.sleep(0.5)
+                        time.sleep(5)
                         continue
+
                     raise
 
     except (OSError, RuntimeError, ValueError, TypeError) as error:
