@@ -22,13 +22,12 @@ from dotenv import load_dotenv
 import paho.mqtt.publish as publish
 
 try:
-    from sensirion_i2c_driver import I2cConnection  # type: ignore[reportMissingImports]
+    from sensirion_i2c_driver import (  # type: ignore[reportMissingImports]
+        I2cConnection,
+        LinuxI2cTransceiver,
+    )
 except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
     I2cConnection = None
-
-try:
-    from sensirion_i2c_linux import LinuxI2cTransceiver  # type: ignore[reportMissingImports]
-except ImportError:  # pragma: no cover - depends on Raspberry Pi hardware image
     LinuxI2cTransceiver = None
 
 try:
@@ -237,7 +236,7 @@ def run() -> None:
 
     if I2cConnection is None or LinuxI2cTransceiver is None or Sen66Device is None:
         logger.error(
-            "Sensirion I2C dependencies are not installed; SEN66 monitoring is unavailable"
+            "Sensirion I2C dependencies are not installed. Install sensirion-i2c-driver and sensirion-i2c-sen66 to enable SEN66 monitoring."
         )
         sys.exit(1)
 
