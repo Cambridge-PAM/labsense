@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 # MQTT Configuration
 MQTT_SERVER = os.getenv("MQTT_SERVER", "").strip()
-MQTT_PATH = os.getenv("MQTT_PATH_SEN66", "labsense/sensors/sen66").strip()
+MQTT_PATH = os.getenv("MQTT_PATH_SEN66", "sen66").strip()
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TIMEOUT = int(os.getenv("MQTT_TIMEOUT", "10"))
 

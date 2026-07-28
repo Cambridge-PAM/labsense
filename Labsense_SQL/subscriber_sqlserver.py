@@ -40,7 +40,7 @@ logger.info("Loaded environment variables from %s", env_path)
 MQTT_SERVER = os.getenv("MQTT_SERVER", "10.253.179.46").strip()
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TIMEOUT = int(os.getenv("MQTT_TIMEOUT", "60"))
-TOPICS = ["water", "fumehood"]
+TOPICS = ["water", "fumehood", "sen66"]
 
 # SQL Server Configuration
 SQL_SERVER = os.getenv("SQL_SERVER", "MSM-FPM-70203\\LABSENSE").strip()
@@ -142,6 +142,30 @@ def init_database() -> bool:
             """
         )
 
+        # Create sen66 table if not exists
+        cursor.execute(
+            """
+            IF NOT EXISTS (SELECT object_id FROM sys.objects WHERE object_id = OBJECT_ID(N'[sen66]') AND type = 'U')
+            BEGIN
+                CREATE TABLE sen66 (
+                    id INT NOT NULL IDENTITY(1,1) PRIMARY KEY,
+                    LabId INTEGER,
+                    SublabId INTEGER,
+                    Temperature REAL,
+                    Humidity REAL,
+                    Co2 REAL,
+                    Voc REAL,
+                    Nox REAL,
+                    Pm1 REAL,
+                    Pm25 REAL,
+                    Pm4 REAL,
+                    Pm10 REAL,
+                    Timestamp DATETIME
+                )
+            END
+            """
+        )
+
         conn.commit()
         conn.close()
         logger.info("Database tables initialized successfully")
@@ -221,6 +245,79 @@ def insert_sql_fumehood(
         return False
     except Exception as e:
         logger.error(f"Unexpected error inserting fumehood data: {e}")
+        return False
+
+
+def insert_sql_sen66(
+    lab_id: int,
+    sublab_id: int,
+    temperature: float,
+    humidity: float,
+    co2: float,
+    voc: float,
+    nox: float,
+    pm1: float,
+    pm25: float,
+    pm4: float,
+    pm10: float,
+    timestamp: str,
+) -> bool:
+    """Insert SEN66 data into SQL Server with error handling."""
+    temperature = normalize_value(temperature, 0.0)
+    humidity = normalize_value(humidity, 0.0)
+    co2 = normalize_value(co2, 0.0)
+    voc = normalize_value(voc, 0.0)
+    nox = normalize_value(nox, 0.0)
+    pm1 = normalize_value(pm1, 0.0)
+    pm25 = normalize_value(pm25, 0.0)
+    pm4 = normalize_value(pm4, 0.0)
+    pm10 = normalize_value(pm10, 0.0)
+
+    try:
+        connection = pyodbc.connect(connection_string, timeout=30)
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO sen66 (
+                LabId, SublabId, Temperature, Humidity, Co2, Voc, Nox, Pm1, Pm25, Pm4, Pm10, Timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                lab_id,
+                sublab_id,
+                temperature,
+                humidity,
+                co2,
+                voc,
+                nox,
+                pm1,
+                pm25,
+                pm4,
+                pm10,
+                timestamp,
+            ),
+        )
+
+        connection.commit()
+        connection.close()
+        logger.info(
+            "SEN66 data inserted: LabId=%s, temp=%s C, humidity=%s %%RH, co2=%s ppm, voc=%s, nox=%s",
+            lab_id,
+            temperature,
+            humidity,
+            co2,
+            voc,
+            nox,
+        )
+        return True
+
+    except pyodbc.Error as e:
+        logger.error(f"SQL Server error inserting SEN66 data: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error inserting SEN66 data: {e}")
         return False
 
 
@@ -349,6 +446,57 @@ def on_message(client, userdata, msg):
             except Exception as e:
                 logger.error(
                     "Error processing fumehood data from ipAddress=%s: %s",
+                    ip_address,
+                    e,
+                )
+
+        # Process SEN66 sensor data
+        if "sen66" in sensor_readings:
+            try:
+                sen66_data = sensor_readings.get("sen66")
+                if isinstance(sen66_data, dict):
+                    temperature = sen66_data.get("temperature")
+                    humidity = sen66_data.get("humidity")
+                    co2 = sen66_data.get("co2")
+                    voc = sen66_data.get("voc")
+                    nox = sen66_data.get("nox")
+                    pm1 = sen66_data.get("pm1")
+                    pm25 = sen66_data.get("pm25")
+                    pm4 = sen66_data.get("pm4")
+                    pm10 = sen66_data.get("pm10")
+
+                    logger.debug(
+                        "SEN66 readings from ipAddress=%s: temp=%s C, humidity=%s %%RH, co2=%s ppm, voc=%s, nox=%s",
+                        ip_address,
+                        temperature,
+                        humidity,
+                        co2,
+                        voc,
+                        nox,
+                    )
+                    insert_sql_sen66(
+                        lab_id,
+                        sublab_id,
+                        temperature,
+                        humidity,
+                        co2,
+                        voc,
+                        nox,
+                        pm1,
+                        pm25,
+                        pm4,
+                        pm10,
+                        timestamp,
+                    )
+                else:
+                    logger.warning(
+                        "SEN66 data from ipAddress=%s is not a dictionary: %s",
+                        ip_address,
+                        sen66_data,
+                    )
+            except Exception as e:
+                logger.error(
+                    "Error processing SEN66 data from ipAddress=%s: %s",
                     ip_address,
                     e,
                 )
