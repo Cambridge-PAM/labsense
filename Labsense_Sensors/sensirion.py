@@ -271,12 +271,13 @@ def run() -> None:
                     payload = build_payload(measurement)
 
                     logger.info(
-                        "Readings at %s: temp=%s C, humidity=%s %%RH, co2=%s ppm, pm2.5=%s ug/m3",
+                        "Readings at %s: temp=%s C, humidity=%s %%RH, co2=%s ppm, voc=%s, nox=%s",
                         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         measurement["temperature"],
                         measurement["humidity"],
                         measurement["co2"],
-                        measurement["pm25"],
+                        measurement["voc"],
+                        measurement["nox"],
                     )
 
                     if not publish_mqtt(payload):
