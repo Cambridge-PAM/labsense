@@ -244,7 +244,6 @@ def create_plots(
         ax.set_title(f"{label}: VOC and NOx Index (last 7 days)")
         ax.set_xlabel("Time")
         ax.set_ylabel("Index")
-        ax.set_ylim(0, 500)
         ax.grid(True, alpha=0.3)
         ax.legend(loc="upper right")
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
