@@ -7,8 +7,8 @@ import serial.tools.list_ports as port_list
 import board
 import busio
 import adafruit_character_lcd.character_lcd_rgb_i2c as character_lcd
-from authtoken import authtoken
 
+authtoken = ""
 
 async def main():
     # Uncomment next line to identify available ports

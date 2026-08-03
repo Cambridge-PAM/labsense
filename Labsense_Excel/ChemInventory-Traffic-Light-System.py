@@ -190,6 +190,7 @@ health_red_list = []
 health_yellow_list = []
 health_green_list = []
 
+
 def main():
     # Do ChemInventory processing
     for key, value in gsk_2016.items():
