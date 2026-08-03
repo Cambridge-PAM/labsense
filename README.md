@@ -1,50 +1,48 @@
-# LabSENSE
+# LabSense
 
 [![Documentation Status](https://readthedocs.org/projects/labsense/badge/?version=latest)](https://labsense.readthedocs.io/en/latest/)
 
-A laboratory IoT monitoring and analytics platform for chemistry lab environments. Collects real-time sensor data from Raspberry Pi devices, retrieves chemical inventory data from a cloud API, processes hazardous waste records, and generates interactive HTML dashboards visualising all data streams.
+LabSense is a laboratory IoT monitoring and analytics platform for chemistry lab environments. It ingests live sensor streams, processes ChemInventory and waste data, and generates HTML dashboards for operations and reporting.
 
 ## Architecture
 
 ```
-[Raspberry Pi 4 / Pico]  →  MQTT  →  Subscriber  →  SQL Server (labsense DB)
-[ChemInventory API]      →  HTTP  →  CI scripts   →  SQL Server
-[Waste Master.xlsx]      →  file  →  Waste module →  HTML dashboards (plots/)
-[Balance (RS-232)]       →  serial → balance_ci   →  ChemInventory API update
+[Raspberry Pi sensors]    -> MQTT/serial -> ingestion scripts         -> SQL Server (labsense)
+[ChemInventory API]       -> HTTP        -> Labsense_SQL + Balance    -> SQL Server
+[Waste Master workbook]   -> file        -> Waste processing           -> dashboard outputs
+[Dashboard generators]    -> SQL/files   -> plots/*.html + plots/*.png/pdf
 ```
 
-## Modules
+## Repository Layout
 
-| Directory | Purpose |
+| Path | Purpose |
 |---|---|
-| `Labsense_SQL/` | SQL Server data layer — inserts, queries, and HTML dashboard generation for chemicals, electricity, fumehood, and water |
-| `Labsense_Sensors/` | Raspberry Pi sensor scripts — VL53L1X ToF (fumehood sash position), LTR559 light sensor, and GPIO water flow sensors |
-| `ChemInventory/` | Ad-hoc scripts querying the ChemInventory REST API by CAS number or GHS hazard code |
-| `Waste/` | Reads `Waste Master.xlsx`, proportionally allocates waste volumes across HP1–HP15 hazard codes, and generates per-HP dashboards |
-| `Balance Comms/` | Scans a barcode, reads weight from a serial balance (Denver Instruments SI-2002), and updates ChemInventory via REST API |
-| `Labsense_Excel/` | Legacy Excel-based order and waste update scripts using `openpyxl` |
-| `tests/` | `pytest` unit tests for core processing logic |
-| `create_main_dashboard.py` | Generates the top-level HTML landing page linking all dashboards in `plots/` |
+| `Labsense_SQL/` | SQL Server ingestion and analytics dashboards (`ChemInventory`, `consumption`, `fumehood`, `water`, `sen66`) |
+| `Labsense_Sensors/` | Raspberry Pi sensor publishers and helpers (fumehood, SEN66, water flow, device email/IP utilities) |
+| `Waste/` | Waste normalization and hazard-code allocation workflow plus waste dashboards |
+| `Balance/` | Balance integration scripts (serial weighing and ChemInventory update workflow) |
+| `Consumables/` | Consumables and strain-calibration scripts |
+| `Labsense_Excel/` | Legacy Excel-driven operational scripts |
+| `Analytics/` | Analysis notebooks and case study notebooks/scripts |
+| `docs/` | MkDocs documentation source |
+| `tests/` | Project-level pytest suite |
+| `create_main_dashboard.py` | Generates `plots/index.html` linking discovered `*dashboard.html` files |
 
-## Dependencies
+## Environment and Dependencies
 
-Managed via Conda. Key packages:
+The project is managed with Conda via `environment.yml`.
 
-- **Data processing**: `pandas`, `numpy`, `matplotlib`
-- **Database**: `pyodbc` (SQL Server, ODBC Driver 18)
-- **Messaging**: `paho-mqtt`, Azure IoT Hub SDK
-- **APIs**: `requests`
-- **Spreadsheets**: `openpyxl`
-- **Configuration**: `python-dotenv`
-- **Testing**: `pytest`
-- **Hardware** *(Raspberry Pi only)*: `RPi.GPIO`, `gpiozero`, `VL53L1X`, `ltr559`, `hx711-multi`, `adafruit-circuitpython-charlcd`
+Core dependencies currently include:
 
-See `environment.yml` for the full list.
+- Data and analytics: `pandas`, `numpy`, `scipy`, `scikit-learn`, `matplotlib`
+- Database/connectivity: `pyodbc`, `sqlite`
+- Integrations: `paho-mqtt`, `requests`, `openpyxl`, `python-dotenv`
+- Testing: `pytest`
 
-## Installation
+Install:
 
 ```bash
-git clone https://github.com/yourusername/labsense.git
+git clone https://github.com/Cambridge-PAM/labsense.git
 cd labsense
 conda env create -f environment.yml
 conda activate labsense
@@ -52,53 +50,59 @@ conda activate labsense
 
 ## Configuration
 
-All SQL/processing scripts read configuration from `Labsense_SQL/.env`:
+Most SQL/processing scripts load variables from `Labsense_SQL/.env`.
+
+Typical variables:
 
 ```env
-# EmonCMS API key (electricity/water consumption data)
 EMONCMS_API_KEY=your_emoncms_api_key
-
-# EmonCMS base URL (host/IP + scheme)
 EMONCMS_BASE_URL=https://your_emoncms_host
 
-# Logging level
-LOG_LEVEL=INFO
-
-# ChemInventory API token
 CHEMINVENTORY_CONNECTION_STRING=your_cheminventory_api_token
-
-# Toggle SQL Server inserts for ChemInventory data (True/False)
 CHEMINVENTORY_INSERT_TO_SQL=True
 
-# MQTT broker address (used by subscriber_sqlserver.py)
 MQTT_SERVER=your_mqtt_broker_ip
 
-# SQL Server connection
 SQL_SERVER=your_sql_server_instance
 SQL_DATABASE=labsense
 SQL_TRUSTED_CONNECTION=yes
 SQL_ENCRYPTION=Optional
+
+PLOTS_DIR=plots
+LOG_LEVEL=INFO
 ```
 
-Sensor scripts on the Raspberry Pi use `Labsense_Sensors/.env` for I2C addresses, sensor thresholds, and retry settings.
+Raspberry Pi sensor scripts use `Labsense_Sensors/.env` for hardware-specific settings.
 
-## Running the Dashboards
+## Generating Dashboards
 
-Generate all HTML dashboards and the landing page:
+Run the dashboard generators:
 
 ```bash
 python Labsense_SQL/ChemInventory_dashboard.py
 python Labsense_SQL/consumption_dashboard.py
 python Labsense_SQL/Fumehood_dashboard.py
 python Labsense_SQL/water_dashboard.py
+python Labsense_SQL/sen66_dashboard.py
 python Waste/processWasteMaster.py
 python create_main_dashboard.py
 ```
 
-Output is written to `plots/`. Open `plots/summary_dashboard.html` in a browser.
+Outputs are written to `plots/`. Open `plots/index.html` to access the dashboard landing page.
 
-## Running Tests
+## Testing
 
 ```bash
 pytest
 ```
+
+## Documentation
+
+Build docs locally:
+
+```bash
+pip install -r docs/requirements.txt
+mkdocs serve
+```
+
+Then open the local MkDocs URL (usually `http://127.0.0.1:8000`).
