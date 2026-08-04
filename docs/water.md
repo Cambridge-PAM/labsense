@@ -113,7 +113,7 @@ Mount the Raspberry Pi away from potential water exposure to reduce the risk of 
 libopenblas.so.0: cannot open shared object file: No such file or directory
 ```
 
-**Solution**
+#### Solution
 
 ```bash
 sudo apt-get install libopenblas-dev
@@ -127,7 +127,7 @@ No module named RPi
 
 This may occur even when the package appears to be installed.
 
-**Solution**
+#### Solution
 
 ```bash
 pip install RPi.GPIO

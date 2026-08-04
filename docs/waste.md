@@ -13,7 +13,7 @@ This page explains how the Waste scripts work together to convert hazardous wast
 
 ### `waste2hp.py`
 
-Purpose:
+#### Purpose
 
 - Reads a hazardous waste form workbook.
 - Detects the header row and maps source columns to normalized names.
@@ -22,7 +22,7 @@ Purpose:
 - Expands hazard properties into integer flags `HP1` to `HP15`.
 - Writes cleaned CSV and JSON outputs.
 
-Key behavior:
+#### Key behavior
 
 - If the requested sheet is not found, it falls back to `2.1 Waste Form` or another sheet containing `waste form`.
 - Rows without a numeric reference are dropped.
@@ -30,7 +30,7 @@ Key behavior:
 
 ### `processWasteMaster.py`
 
-Purpose:
+#### Purpose
 
 - Reads the Waste Master workbook.
 - Converts `Size` + `Unit` values to litres.
@@ -38,7 +38,7 @@ Purpose:
 - Aggregates by `Date` and `HP Number`.
 - Writes an output Excel summary and optional plots/HTML dashboard.
 
-Key behavior:
+#### Key behavior
 
 - Default workbook path is `Z:\LabsenseDashboard\Waste Master.xlsx`.
 - Unit multipliers come from `Labsense_SQL/constants.py` (`to_litre`).

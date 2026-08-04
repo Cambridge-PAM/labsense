@@ -11,7 +11,7 @@ If you see the name `ChemInvenotry_sqlserver` elsewhere, that is a typo. The act
 
 ### `ChemInventory_sqlserver.py`
 
-Purpose:
+#### Purpose
 
 - Calls the ChemInventory API for each solvent in the project solvent list (`gsk_2016`).
 - Converts container sizes/units into litres.
@@ -24,7 +24,7 @@ Purpose:
   - `chemHealth`
 - Optionally inserts one new timestamped row per category into SQL Server.
 
-Key behavior:
+#### Key behavior
 
 - Requires `CHEMINVENTORY_CONNECTION_STRING` (ChemInventory auth token) for API access.
 - Uses retries for transient HTTP failures.
@@ -32,21 +32,21 @@ Key behavior:
 - Uses unit conversion factors from `Labsense_SQL/constants.py`.
 - SQL inserts are controlled by `CHEMINVENTORY_INSERT_TO_SQL`.
 
-CLI modes:
+#### CLI modes
 
 - Default mode: run full API fetch and SQL sync (`main()`).
 - Export mode: `--export-red-csv` writes a red-category holdings CSV (no SQL insert path).
 
 ### `ChemInventory_dashboard.py`
 
-Purpose:
+#### Purpose
 
 - Reads historical category totals from SQL Server tables listed above.
 - Builds trend plots per category.
 - Calls `get_red_category_chemical_volumes()` to add a live table of currently held red-classified chemicals.
 - Writes an HTML dashboard (default: `plots/cheminventory_dashboard.html`).
 
-Key behavior:
+#### Key behavior
 
 - Expects SQL tables to already contain data (normally from `ChemInventory_sqlserver.py`).
 - Also needs `CHEMINVENTORY_CONNECTION_STRING` because it fetches the live red holdings list.
@@ -85,7 +85,7 @@ PLOTS_DIR=plots
 LOG_LEVEL=INFO
 ```
 
-Important:
+#### Important
 
 - `CHEMINVENTORY_CONNECTION_STRING` is mandatory for API calls.
 - Without it, `ChemInventory_sqlserver.py` raises a runtime error.
