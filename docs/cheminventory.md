@@ -1,4 +1,4 @@
-# ChemInventory SQL Pipeline
+# ChemInventory
 
 This page explains how these two scripts work together:
 

@@ -145,6 +145,122 @@ pip install RPi.GPIO
 
 - [water-2taps.py](https://github.com/Cambridge-PAM/labsense/blob/main/Labsense_Sensors/water-2taps.py)
 
+## How `water-2taps.py` Works
+
+This section describes the runtime behavior of `Labsense_Sensors/water-2taps.py` in the same style as the ChemInventory pipeline documentation.
+
+### Purpose
+
+- Monitors pulse output from two YF-S201C flow sensors connected to GPIO.
+- Converts pulses into estimated water volume (mL).
+- Publishes measurements to MQTT when flow is detected.
+- Supports graceful shutdown and local logging.
+
+### End-to-End Data Flow
+
+```mermaid
+flowchart LR
+		A[Flow sensor pulse edges on GPIO 4 and 27] --> B[water-2taps.py pulse counter]
+		B --> C[Volume estimate in mL using FLOW_RATE_FACTOR]
+		C --> D[MQTT publish to topic, default: water]
+		D --> E[subscriber_sqlserver.py]
+		E --> F[Convert mL to L and insert into dbo.water]
+		F --> G[water_dashboard.py plots and HTML]
+```
+
+### Runtime Logic (what happens in code)
+
+1. Loads `Labsense_Sensors/.env` and exits if the file is missing.
+2. Initializes GPIO pins for two flow sensors and one status LED.
+3. Attaches falling-edge interrupts to both sensor pins.
+4. In a background thread, counts pulses and updates a per-second volume estimate.
+5. In the async main loop:
+	 - measures over `MEASUREMENT_INTERVAL` seconds,
+	 - computes total measured water,
+	 - publishes MQTT only when measured water is greater than zero,
+	 - sleeps for `PUBLISH_DELAY` before the next cycle.
+6. On SIGINT/SIGTERM, cleans up GPIO and exits safely.
+
+### Important Behavior for Two-Tap Mode
+
+- Both sensor interrupts increment the same shared counter.
+- The script therefore reports a combined volume value for both taps, not per-tap volumes.
+- Source identity is represented via `LAB_ID` and `SUBLAB_ID` fields in the MQTT payload.
+
+### MQTT Payload Shape
+
+The script publishes a Python-dict-style string that the subscriber normalizes for JSON parsing:
+
+```text
+{
+	'labId': 1,
+	'sublabId': 3,
+	'ipAddress': '10.0.0.12',
+	'sensorReadings': {'water': 42.7},
+	'measureTimestamp': '2026-08-04 10:21:33'
+}
+```
+
+`water` is sent in mL. In `Labsense_SQL/subscriber_sqlserver.py`, it is divided by 1000 before insert, so SQL stores litres.
+
+## Water Sensor Script Configuration (`Labsense_Sensors/.env`)
+
+Example configuration:
+
+```env
+# GPIO
+FLOW_SENSOR_GPIO_1=4
+FLOW_SENSOR_GPIO_2=27
+LED_GPIO=2
+
+# Pulse -> volume calibration
+FLOW_RATE_FACTOR=5
+
+# MQTT
+MQTT_SERVER=192.168.1.10
+MQTT_PATH=water
+MQTT_PORT=1883
+MQTT_TIMEOUT=10
+
+# Lab metadata in payload
+LAB_ID=1
+SUBLAB_ID=3
+
+# Timing (seconds)
+MEASUREMENT_INTERVAL=5
+PUBLISH_DELAY=10
+```
+
+Notes:
+
+- `MQTT_SERVER` is required; script exits if missing.
+- `FLOW_RATE_FACTOR` controls calibration and should be tuned to your sensor/install geometry.
+- Keep `LAB_ID` and `SUBLAB_ID` aligned with your SQL/dashboard mapping.
+
+## Running `water-2taps.py`
+
+From repository root on the Raspberry Pi host:
+
+```bash
+python Labsense_Sensors/water-2taps.py
+```
+
+If your environment requires elevated GPIO access:
+
+```bash
+sudo python Labsense_Sensors/water-2taps.py
+```
+
+The script logs to console and to `Labsense_Sensors/water-2taps.log` when file write permission is available.
+
+## Prerequisites for the Water Pipeline
+
+- Raspberry Pi with compatible GPIO access.
+- Two wired YF-S201C sensors (or equivalent pulse-output flow sensors).
+- MQTT broker reachable from the Pi.
+- SQL subscriber running (`Labsense_SQL/subscriber_sqlserver.py`) and subscribed to topic `water`.
+- SQL connection configured for the subscriber in `Labsense_SQL/.env`.
+
 ## Running Water Dashboard Generation
 
 From the repository root:
