@@ -6,8 +6,8 @@ and running processing/dashboard scripts.
 
 ## 1. Server Prerequisites
 
-- Operating system: [PLACEHOLDER: Windows/Linux version used in production]
-- CPU/RAM baseline: [PLACEHOLDER: minimum and recommended specs]
+- Operating system: tested with Windows 11 Pro 25H2.
+- CPU/RAM baseline: tested with Intel i9-14900 2.00 GHz processor with 64 GB of RAM.
 - Network:
     - Static IP or reserved DHCP lease
     - Access to MQTT clients (sensor devices)
@@ -33,8 +33,6 @@ Current baseline in environment.yml: Python 3.9.
 conda --version
 ```
 
-[PLACEHOLDER: approved installer source/version policy]
-
 ### 2.3 Install Conda (Linux)
 
 Install Miniconda, then initialize shell support and reopen your shell.
@@ -42,8 +40,6 @@ Install Miniconda, then initialize shell support and reopen your shell.
 ```bash
 conda --version
 ```
-
-[PLACEHOLDER: Linux installation commands for your target distro and security policy]
 
 ## 3. Create the LabSense Conda Environment
 
@@ -87,8 +83,6 @@ Typical keys:
 - SQL_DATABASE
 - SQL_TRUSTED_CONNECTION
 - SQL_ENCRYPTION
-
-[PLACEHOLDER: full validated key list for production]
 
 ## 5. Set Up MQTT Broker (Mosquitto)
 
@@ -170,6 +164,7 @@ LabSense publishers should send JSON payloads in this structure:
   {
     "labId": 1,
     "sublabId": 3,
+    "ipAddress": "10.247.1.1",
     "sensorReadings": {
       "water": 0.12
     },
@@ -185,7 +180,7 @@ LabSense publishers should send JSON payloads in this structure:
 
 ### 6.1 Install and Provision SQL Server
 
-- SQL Server host: [PLACEHOLDER: hostname or instance naming standard]
+- SQL Server host: `labsense`
 - SQL version: SQL Server 2022 Express
 - Database name: `labsense`
 
@@ -238,8 +233,6 @@ The following scripts are typically run on the server host.
 - `Labsense_SQL/subscriber_sqlserver.py`
   - Subscribes to MQTT topics and inserts data into SQL Server.
 
-[PLACEHOLDER: system service/scheduler definition for continuous run]
-
 ### 7.2 Processing and Dashboard Generation
 
 - `Labsense_SQL/ChemInventory_dashboard.py`
@@ -275,7 +268,245 @@ Linux options:
 - systemd services/timers
 - cron
 
-[PLACEHOLDER: canonical schedule and retention policy]
+The subscriber can also be run as a scheduled start-up task.
+
+This is an exemplar script to run the subscriber.
+
+```bash
+mosquitto
+C:\Users\fpm-admin\.conda\envs\labsense\python.exe C:\Users\fpm-admin\src\labsense\Labsense_SQL\subscriber_sqlserver.py
+```
+
+Dashboard creation scripts are usually run on a daily cadence.
+
+This is an exemplar script to run dashboard creation to a network folder.
+
+```bash
+@echo off
+setlocal enabledelayedexpansion
+
+echo [DIAGNOSTIC] Script started
+echo [DIAGNOSTIC] Setting variables...
+
+REM ============================================================
+REM  CONFIGURATION
+REM ============================================================
+set LOGFILE=C:\Labsense\Logs\labsense_task.log
+set PYTHON_LOG=C:\Labsense\Logs\python_output.log
+set CONDA_PATH=C:\ProgramData\miniconda3
+set ENV_NAME=labsense
+set ENV_PATH=C:\Users\fpm-admin\.conda\envs\labsense
+
+echo [DIAGNOSTIC] Variables set
+echo [DIAGNOSTIC] LOGFILE: %LOGFILE%
+echo [DIAGNOSTIC] CONDA_PATH: %CONDA_PATH%
+
+REM Network share credentials
+set SHARE=\\folder\
+set DRIVE=Z:
+set SHARE_USER=USERNAME
+set SHARE_PASS=PASSWORD
+
+echo [DIAGNOSTIC] Network variables set
+
+REM Python scripts
+set SCRIPT1=C:\Users\fpm-admin\src\labsense\Labsense_SQL\ChemInventory_sqlserver.py
+set SCRIPT2=C:\Users\fpm-admin\src\labsense\Labsense_SQL\daily_consumption_sqlserver.py
+set SCRIPT3=C:\Users\fpm-admin\src\labsense\Labsense_SQL\granular_consumption_sqlserver.py
+set SCRIPT4=C:\Users\fpm-admin\src\labsense\Waste\processWasteMaster.py
+set SCRIPT5=C:\Users\fpm-admin\src\labsense\Labsense_SQL\ChemInventory_dashboard.py
+set SCRIPT6=C:\Users\fpm-admin\src\labsense\Labsense_SQL\consumption_dashboard.py
+set SCRIPT7=C:\Users\fpm-admin\src\labsense\Labsense_SQL\Fumehood_dashboard.py
+set SCRIPT8=C:\Users\fpm-admin\src\labsense\Labsense_SQL\water_dashboard.py
+set SCRIPT9=C:\Users\fpm-admin\src\labsense\Labsense_SQL\sen66_dashboard.py
+
+echo [DIAGNOSTIC] Script paths set
+echo [DIAGNOSTIC] Creating logs directory...
+
+REM ============================================================
+REM  SETUP - Create logs directory
+REM ============================================================
+if not exist "C:\Labsense\Logs" (
+    echo [DIAGNOSTIC] Directory does not exist, creating...
+    mkdir "C:\Labsense\Logs"
+    if !ERRORLEVEL! neq 0 (
+        echo ERROR: Failed to create logs directory
+        pause
+        exit /b 1
+    )
+    echo [DIAGNOSTIC] Directory created successfully
+) else (
+    echo [DIAGNOSTIC] Directory already exists
+)
+
+echo [DIAGNOSTIC] About to define log function...
+
+REM ============================================================
+REM  LOG ROTATION - KEEP LAST 7 DAYS
+REM ============================================================
+echo [DIAGNOSTIC] Cleaning up logs older than 7 days...
+forfiles /p "C:\Labsense\Logs" /m "*.log" /d -7 /c "cmd /c del /q @path" >nul 2>&1
+echo [DIAGNOSTIC] Log cleanup complete
+
+REM ============================================================
+REM  LOGGING FUNCTION
+REM ============================================================
+goto :main
+
+:log
+echo [%date% %time%] %~1 >> "!LOGFILE!"
+echo [%date% %time%] %~1
+goto :eof
+
+:main
+echo [DIAGNOSTIC] Log function defined
+echo [DIAGNOSTIC] Starting execution
+call :log "=========================================================="
+call :log "TASK STARTED"
+call :log "Machine: %COMPUTERNAME%"
+call :log "User: %USERNAME%"
+call :log "Working directory: %CD%"
+call :log "=========================================================="
+
+REM ============================================================
+REM  CHECK CONDA
+REM ============================================================
+call :log "Checking Conda installation at: !CONDA_PATH!"
+if not exist "!CONDA_PATH!" (
+    call :log "ERROR: Conda not found at !CONDA_PATH!"
+    call :log "Please install Miniconda3"
+    goto error
+)
+call :log "Conda found"
+
+REM ============================================================
+REM  CLEAN UP EXISTING DRIVE MAPPING
+REM ============================================================
+call :log "Cleaning up existing network drive mapping..."
+net use !DRIVE! /delete /yes >nul 2>&1
+
+REM ============================================================
+REM  MAP NETWORK DRIVE
+REM ============================================================
+call :log "Mapping network drive !DRIVE! to !SHARE!"
+echo [DIAGNOSTIC] DRIVE=!DRIVE!
+echo [DIAGNOSTIC] SHARE=!SHARE!
+echo [DIAGNOSTIC] SHARE_USER=!SHARE_USER!
+
+REM Convert to regular variables before disabling delayed expansion
+setlocal disabledelayedexpansion
+set "DRIVE=%DRIVE%"
+set "SHARE=%SHARE%"
+set "SHARE_USER=%SHARE_USER%"
+set "SHARE_PASS=%SHARE_PASS%"
+
+echo [DIAGNOSTIC] About to run: net use %DRIVE% "%SHARE%" /user:%SHARE_USER%
+
+net use %DRIVE% "%SHARE%" /user:%SHARE_USER% "%SHARE_PASS%" /persistent:no
+set MAPERROR=%ERRORLEVEL%
+endlocal & set MAPERROR=%MAPERROR%
+setlocal enabledelayedexpansion
+
+if !MAPERROR! neq 0 (
+    call :log "ERROR: Failed to map network drive. Error code: !MAPERROR!"
+    call :log "Listing current network connections:"
+    net use >> "!LOGFILE!"
+    goto error
+)
+call :log "Network drive mapped successfully"
+
+REM ============================================================
+REM  PREPARE CONDA RUN (avoid activate in Task Scheduler)
+REM ============================================================
+set "CONDA_BAT=!CONDA_PATH!\condabin\conda.bat"
+call :log "Preparing Conda run for environment: !ENV_NAME!"
+call :log "Using conda.bat: !CONDA_BAT!"
+call :log "Using env path: !ENV_PATH!"
+
+if not exist "!CONDA_BAT!" (
+    call :log "ERROR: conda.bat not found at !CONDA_BAT!"
+    goto error
+)
+
+call :log "Collecting Conda diagnostics"
+call "!CONDA_BAT!" info >> "!PYTHON_LOG!" 2>&1
+call "!CONDA_BAT!" env list >> "!PYTHON_LOG!" 2>&1
+call :log "Listing envs directory: !CONDA_PATH!\envs"
+dir "!CONDA_PATH!\envs" >> "!PYTHON_LOG!" 2>&1
+
+call "!CONDA_BAT!" run -p "!ENV_PATH!" python --version >> "!PYTHON_LOG!" 2>&1
+if !ERRORLEVEL! neq 0 (
+    call :log "ERROR: Conda run failed for environment !ENV_NAME!"
+    goto error
+)
+call :log "Conda environment ready"
+
+REM ============================================================
+REM  RUN PYTHON SCRIPTS
+REM ============================================================
+call :log "Starting Python script execution"
+
+set SCRIPT_NUM=0
+for %%S in (
+    "!SCRIPT1!"
+    "!SCRIPT2!"
+    "!SCRIPT3!"
+    "!SCRIPT4!"
+    "!SCRIPT5!"
+    "!SCRIPT6!"
+    "!SCRIPT7!"
+    "!SCRIPT8!"
+    "!SCRIPT9!"
+) do (
+    set /a SCRIPT_NUM+=1
+    call :log "---"
+    call :log "Running script !SCRIPT_NUM!: %%~nxS"
+    
+    call "!CONDA_BAT!" run -p "!ENV_PATH!" python "%%~S" >> "!PYTHON_LOG!" 2>&1
+    set EXIT_CODE=!ERRORLEVEL!
+    
+    if !EXIT_CODE! neq 0 (
+        call :log "ERROR: Script failed with exit code !EXIT_CODE!: %%~S"
+        goto error
+    )
+    call :log "Script completed successfully"
+)
+
+REM ============================================================
+REM  CLEANUP AND SUCCESS
+REM ============================================================
+call :log "All scripts completed successfully"
+call :log "Cleaning up network drive mapping..."
+net use !DRIVE! /delete /yes >nul 2>&1
+
+call :log "=========================================================="
+call :log "TASK COMPLETED SUCCESSFULLY"
+call :log "=========================================================="
+
+echo.
+echo All scripts completed successfully!
+echo.
+pause
+endlocal
+exit /b 0
+
+REM ============================================================
+REM  ERROR HANDLER
+REM ============================================================
+:error
+call :log "=========================================================="
+call :log "TASK FAILED"
+call :log "=========================================================="
+call :log "Cleaning up network drive mapping..."
+net use !DRIVE! /delete /yes >nul 2>&1
+
+echo.
+echo ERROR: Task failed. Check log file:
+echo   %LOGFILE%
+echo.
+endlocal
+exit /b 1
+```
 
 ## 8. Health Checks and Monitoring
 
@@ -284,8 +515,6 @@ Linux options:
 - Verify latest SQL timestamps are current.
 - Verify dashboard output files are regenerated on schedule.
 - Review logs for auth, network, or DB connectivity failures.
-
-[PLACEHOLDER: alerting and observability stack]
 
 ## 9. Troubleshooting Quick Checks
 
