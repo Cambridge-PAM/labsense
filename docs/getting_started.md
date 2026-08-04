@@ -17,7 +17,9 @@ Before running dashboard scripts, complete these pages in order:
 3. [ChemInventory Setup and Pipeline](cheminventory.md)
 	- ChemInventory API key/token requirements
 	- SQL sync flow used by ChemInventory dashboard
-4. [Water Monitoring Setup](water.md)
+4. [Waste Generation Pipeline](waste.md)
+	- hazardous waste extraction, HP-code allocation, and waste dashboard outputs
+5. [Water Monitoring Setup](water.md)
 	- water sensor wiring, collection script behavior, and dashboard dependencies
 
 The `Run Core Dashboards` commands below assume these setup steps are already complete.
@@ -51,6 +53,7 @@ Use these docs to confirm values before running pipelines:
 
 - [LabSense Server Setup](labsense_server.md) for SQL Server, MQTT, and server-side env keys.
 - [ChemInventory Setup and Pipeline](cheminventory.md) for `CHEMINVENTORY_CONNECTION_STRING` and ChemInventory sync requirements.
+- [Waste Generation Pipeline](waste.md) for waste input file expectations and output/dashboard configuration.
 - [Water Monitoring Setup](water.md) for water sensor pipeline configuration and MQTT payload path.
 
 Typical values include:
