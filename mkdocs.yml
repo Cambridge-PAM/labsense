@@ -5,10 +5,10 @@ theme:
 nav:
   - Home: index.md
   - Getting Started: getting_started.md
-  - ChemInventory SQL Pipeline: cheminventory_sql_pipeline.md
-  - Waste Generation Pipeline: waste.md
   - LabSense Server: labsense_server.md
   - LabSense Sensors: labsense_sensors.md
+  - ChemInventory: cheminventory.md
+  - Waste Generation: waste.md
   - Water Monitoring: water.md
 plugins:
   - search
