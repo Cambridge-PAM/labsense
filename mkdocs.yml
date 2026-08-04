@@ -5,6 +5,7 @@ theme:
 nav:
   - Home: index.md
   - Getting Started: getting_started.md
+  - ChemInventory SQL Pipeline: cheminventory_sql_pipeline.md
   - LabSense Server: labsense_server.md
   - LabSense Sensors: labsense_sensors.md
   - Water Monitoring: water.md
