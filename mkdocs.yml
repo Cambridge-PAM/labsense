@@ -7,6 +7,7 @@ nav:
   - Getting Started: getting_started.md
   - LabSense Server: labsense_server.md
   - LabSense Sensors: labsense_sensors.md
+  - Electricity Monitoring: electricity.md
   - ChemInventory: cheminventory.md
   - Waste Generation: waste.md
   - Water Monitoring: water.md
