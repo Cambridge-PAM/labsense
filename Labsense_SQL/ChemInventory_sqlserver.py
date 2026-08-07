@@ -59,6 +59,23 @@ connection_string = (
     f"Encrypt={encryption_pref}"
 )
 
+
+def _get_int_env(var_name: str, default: int) -> int:
+    """Read an integer environment variable with a default and validation."""
+    raw_value = os.getenv(var_name)
+    if raw_value is None or str(raw_value).strip() == "":
+        return default
+    try:
+        return int(str(raw_value).strip())
+    except ValueError as ex:
+        raise ValueError(f"{var_name} must be an integer, got: {raw_value!r}") from ex
+
+
+CHEMINVENTORY_INVENTORY_ID = _get_int_env("CHEMINVENTORY_INVENTORY_ID", 873)
+CHEMINVENTORY_EXCLUDED_LOCATION_ID = _get_int_env(
+    "CHEMINVENTORY_EXCLUDED_LOCATION_ID", 527895
+)
+
 # `gsk_2016` and `to_litre` are defined in `Labsense_SQL.constants` and
 # imported at the top of this module (see `from .constants import ...`).
 composite_red_list = []
@@ -135,7 +152,7 @@ def get_red_category_chemical_volumes(
             "https://app.cheminventory.net/api/search/execute",
             json={
                 "authtoken": chem_token,
-                "inventory": 873,
+                "inventory": CHEMINVENTORY_INVENTORY_ID,
                 "type": "cas",
                 "contents": cas_number,
             },
@@ -154,7 +171,9 @@ def get_red_category_chemical_volumes(
         if ci_df.empty:
             total_litres = 0.0
         else:
-            ci_df_real = ci_df.loc[ci_df["location"] != 527895]
+            ci_df_real = ci_df.loc[
+                ci_df["location"] != CHEMINVENTORY_EXCLUDED_LOCATION_ID
+            ]
             if ci_df_real.empty:
                 total_litres = 0.0
             else:
@@ -318,7 +337,7 @@ def main(
                 "https://app.cheminventory.net/api/search/execute",
                 json={
                     "authtoken": os.getenv("CHEMINVENTORY_CONNECTION_STRING"),
-                    "inventory": 873,
+                    "inventory": CHEMINVENTORY_INVENTORY_ID,
                     "type": "cas",
                     "contents": value,
                 },
@@ -341,7 +360,9 @@ def main(
         if ci_df.empty:
             temp_sum = 0.0
         else:
-            ci_df_real = ci_df.loc[ci_df["location"] != 527895]
+            ci_df_real = ci_df.loc[
+                ci_df["location"] != CHEMINVENTORY_EXCLUDED_LOCATION_ID
+            ]
             if ci_df_real.empty:
                 temp_sum = 0.0
             else:

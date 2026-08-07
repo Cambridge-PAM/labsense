@@ -5,8 +5,6 @@ This page explains how these two scripts work together:
 - `Labsense_SQL/ChemInventory_sqlserver.py`
 - `Labsense_SQL/ChemInventory_dashboard.py`
 
-If you see the name `ChemInvenotry_sqlserver` elsewhere, that is a typo. The actual file in this repository is `ChemInventory_sqlserver.py`.
-
 ## 1. What Each Script Does
 
 ### `ChemInventory_sqlserver.py`
@@ -28,7 +26,8 @@ If you see the name `ChemInvenotry_sqlserver` elsewhere, that is a typo. The act
 
 - Requires `CHEMINVENTORY_CONNECTION_STRING` (ChemInventory auth token) for API access.
 - Uses retries for transient HTTP failures.
-- Filters out ChemInventory location `527895` before summing held volume. This location in the exemplar inventory corresponds to chemicals on order, that have not yet been delivered.
+- Uses `CHEMINVENTORY_INVENTORY_ID` from `Labsense_SQL/.env` to select the ChemInventory inventory.
+- Filters out one location using `CHEMINVENTORY_EXCLUDED_LOCATION_ID` before summing held volume (for example, on-order stock not yet delivered).
 - Uses unit conversion factors from `Labsense_SQL/constants.py`.
 - SQL inserts are controlled by `CHEMINVENTORY_INSERT_TO_SQL`.
 
@@ -71,6 +70,10 @@ Create `Labsense_SQL/.env` (or update it) with at least these values:
 # ChemInventory API auth token (required)
 CHEMINVENTORY_CONNECTION_STRING=your_cheminventory_api_token
 
+# ChemInventory selection/filter settings
+CHEMINVENTORY_INVENTORY_ID=873
+CHEMINVENTORY_EXCLUDED_LOCATION_ID=527895
+
 # Toggle SQL writes from ChemInventory_sqlserver.py
 CHEMINVENTORY_INSERT_TO_SQL=True
 
@@ -89,25 +92,15 @@ LOG_LEVEL=INFO
 
 - `CHEMINVENTORY_CONNECTION_STRING` is mandatory for API calls.
 - Without it, `ChemInventory_sqlserver.py` raises a runtime error.
+- `CHEMINVENTORY_INVENTORY_ID` and `CHEMINVENTORY_EXCLUDED_LOCATION_ID` must be integer values.
 - `ChemInventory_dashboard.py` also needs it because it fetches live red-category holdings.
-
-## 3.1 Change the Hardcoded Inventory ID
-
-The ChemInventory inventory ID is currently hardcoded as `873` in two places inside `Labsense_SQL/ChemInventory_sqlserver.py`.
-
-Update both lines to your own ChemInventory inventory ID:
-
-- In `get_red_category_chemical_volumes()` payload: `"inventory": 873`
-- In `main()` payload: `"inventory": 873`
-
-If you change only one location, you can get mismatched behavior (for example, SQL sync querying one inventory while red-category live holdings query another).
 
 ## 4. Prerequisites
 
 - Conda environment created from `environment.yml`.
 - SQL Server reachable from the machine running these scripts.
 - ODBC Driver 18 for SQL Server installed.
-- Valid ChemInventory API token with access to inventory ID `873` (as currently hardcoded).
+- Valid ChemInventory API token with access to the inventory set by `CHEMINVENTORY_INVENTORY_ID`.
 
 ## 5. Setup and First Run
 
