@@ -48,4 +48,6 @@ inet 100.121.12.54/32 scope global tailscale0
 valid_lft forever preferred_lft forever
 """
 
-    assert email_ip_module.get_interface_ip("tailscale0", network_info) == "100.121.12.54"
+    assert (
+        email_ip_module.get_interface_ip("tailscale0", network_info) == "100.121.12.54"
+    )

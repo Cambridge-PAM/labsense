@@ -67,13 +67,13 @@ def test_main_uses_module_connection_string(monkeypatch):
 
     monkeypatch.setattr("requests.sessions.Session.post", fake_post)
 
-    # Capture insert_to_sql calls and ensure connection string passed
+    # Capture SQL write calls and ensure connection string passed
     captured = {}
 
-    def fake_insert(category, new_row, connection_string=None):
+    def fake_maybe_insert(category, new_row, connection_string=None, enabled=None):
         captured["args"] = (category, tuple(new_row), connection_string)
 
-    monkeypatch.setattr("Labsense_SQL.sql_helpers.insert_to_sql", fake_insert)
+    monkeypatch.setattr(cis, "maybe_insert", fake_maybe_insert)
 
     # Ensure a chem inventory token exists so main doesn't raise
     monkeypatch.setenv("CHEMINVENTORY_CONNECTION_STRING", "dummy")
