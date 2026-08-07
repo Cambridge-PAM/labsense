@@ -5,6 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import logging
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -193,38 +194,71 @@ def connect_to_wifi(ssid: str, password: str, timeout: int = None) -> bool:
         return False
 
 
-def get_wlan0_ip() -> Optional[str]:
-    """Get the actual IP address of wlan0 interface"""
+def get_interface_ip(
+    interface: str, network_info: Optional[str] = None
+) -> Optional[str]:
+    """Extract the first IPv4 address for a given network interface."""
     try:
-        if not check_command_exists("ip"):
-            logger.warning("'ip' command not found, cannot get wlan0 IP")
+        if network_info is None:
+            if not check_command_exists("ip"):
+                logger.warning(f"'ip' command not found, cannot get {interface} IP")
+                return None
+
+            result = subprocess.run(
+                ["ip", "addr", "show", interface],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                logger.warning(f"Failed to get {interface} info: {result.stderr}")
+                return None
+            network_info = result.stdout
+
+        interface_header_pattern = re.compile(
+            rf"^\d+:\s+{re.escape(interface)}(?::|\s)"
+        )
+        other_interface_pattern = re.compile(r"^\d+:\s+\S+:")
+        in_interface_section = False
+        for line in network_info.split("\n"):
+            stripped = line.strip()
+            if interface_header_pattern.match(stripped):
+                in_interface_section = True
+                continue
+            if in_interface_section and other_interface_pattern.match(stripped):
+                break
+            if in_interface_section and "inet " in line and "inet6" not in line:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    ip = parts[1].split("/")[0]
+                    logger.info(f"Found {interface} IP: {ip}")
+                    return ip
+
+        if not network_info:
             return None
 
-        result = subprocess.run(
-            ["ip", "addr", "show", "wlan0"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            # Parse the IP address from the output
-            for line in result.stdout.split("\n"):
-                if "inet " in line and "inet6" not in line:
-                    # Extract IP address (format: inet 192.168.1.100/24)
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        ip = parts[1].split("/")[0]
-                        logger.info(f"Found wlan0 IP: {ip}")
-                        return ip
-        else:
-            logger.warning(f"Failed to get wlan0 info: {result.stderr}")
+        ifconfig_pattern = re.compile(rf"inet(?:\s+addr:)?\s+([0-9.]+)", re.IGNORECASE)
+        match = ifconfig_pattern.search(network_info)
+        if match:
+            ip = match.group(1)
+            logger.info(f"Found {interface} IP: {ip}")
+            return ip
+
         return None
     except subprocess.TimeoutExpired:
-        logger.error("Timeout getting wlan0 IP")
+        logger.error(f"Timeout getting {interface} IP")
         return None
     except Exception as e:
-        logger.error(f"Error getting wlan0 IP: {e}")
+        logger.error(f"Error getting {interface} IP: {e}")
         return None
+
+
+def get_wlan0_ip() -> Optional[str]:
+    """Get the actual IP address of wlan0 interface"""
+    ip_address = get_interface_ip("wlan0")
+    if ip_address:
+        logger.info(f"Found wlan0 IP: {ip_address}")
+    return ip_address
 
 
 def get_network_info() -> str:
@@ -261,7 +295,11 @@ def get_network_info() -> str:
 
 
 def send_ip_email(
-    hostname: str, ip_address: str, network_info: str, retry_count: int = None
+    hostname: str,
+    ip_address: str,
+    network_info: str,
+    tailscale_ip: Optional[str] = None,
+    retry_count: int = None,
 ) -> bool:
     """Send email with IP address information with retry logic"""
     if retry_count is None:
@@ -274,13 +312,19 @@ def send_ip_email(
             msg["To"] = email_send
             msg["Subject"] = SUBJECT
 
-            message = f"""Raspberry Pi Connected!
+            extra_lines = []
+            if tailscale_ip:
+                extra_lines.append(f"Tailscale IP: {tailscale_ip}")
 
-Hostname: {hostname}
-IP Address: {ip_address}
-
-Full Network Configuration:
-{network_info}"""
+            message_lines = [
+                "Raspberry Pi Connected!",
+                "",
+                f"Hostname: {hostname}",
+                f"IP Address: {ip_address}",
+            ]
+            if extra_lines:
+                message_lines.extend(extra_lines)
+            message = "\n".join(message_lines)
 
             msg.attach(MIMEText(message, "plain"))
             text = msg.as_string()
@@ -390,6 +434,9 @@ def main():
                 sys.exit(1)
 
         network_info = get_network_info()
+        tailscale_ip = get_interface_ip("tailscale0", network_info)
+        if tailscale_ip:
+            logger.info(f"Tailscale IP: {tailscale_ip}")
 
         logger.info(f"Hostname: {hostname}")
         logger.info(f"IP Address: {ip_address}")
@@ -400,7 +447,7 @@ def main():
             sys.exit(0)
 
         # Send email
-        if send_ip_email(hostname, ip_address, network_info):
+        if send_ip_email(hostname, ip_address, network_info, tailscale_ip):
             mark_success(ip_address)
             logger.info("Script completed successfully")
             sys.exit(0)
