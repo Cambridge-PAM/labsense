@@ -29,21 +29,21 @@ The fumehood monitoring system tracks:
 ## Typical Workflow
 
 1. **Sensor Collection** (Labsense_Sensors/fumehood.py):
-   - Reads distance and light sensors at regular intervals from Raspberry Pi
-   - Applies retry logic and sensor recovery if needed
-   - Publishes measurements to MQTT broker with lab and fumehood identifiers
-   - Logs all activity and errors
+    - Reads distance and light sensors at regular intervals from Raspberry Pi
+    - Applies retry logic and sensor recovery if needed
+    - Publishes measurements to MQTT broker with lab and fumehood identifiers
+    - Logs all activity and errors
 
 2. **Data Ingestion**:
-   - MQTT messages are received and stored in SQL Server database
-   - Distance and light measurements tagged with timestamps, lab_id, and sublab_id
+    - MQTT messages are received and stored in SQL Server database
+    - Distance and light measurements tagged with timestamps, lab_id, and sublab_id
 
 3. **Dashboard Generation** (Labsense_SQL/Fumehood_dashboard.py):
-   - Queries SQL Server for fumehood sensor data (grouped by laboratory and sublaboratory)
-   - Calculates sash opening percentages using calibration data
-   - Identifies light sensor errors and anomalies
-   - Generates visualizations showing sash state, light status, and error patterns
-   - Produces an HTML dashboard for viewing trends and diagnostics
+    - Queries SQL Server for fumehood sensor data (grouped by laboratory and sublaboratory)
+    - Calculates sash opening percentages using calibration data
+    - Identifies light sensor errors and anomalies
+    - Generates visualizations showing sash state, light status, and error patterns
+    - Produces an HTML dashboard for viewing trends and diagnostics
 
 ## Setting up Fumehood Sensors
 
