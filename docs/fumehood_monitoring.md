@@ -193,17 +193,17 @@ python Labsense_SQL/Fumehood_dashboard.py \
 The dashboard generates:
 
 1. **HTML Dashboard**: Interactive visualization showing:
-   - Sash opening percentage over time (% open for each fumehood)
-   - Light on/off status
-   - Error regions highlighted (light sensor or distance anomalies)
-   - Presence data correlated with fumehood usage
-   - Laboratory and sublaboratory organization
+     - Sash opening percentage over time (% open for each fumehood)
+     - Light on/off status
+     - Error regions highlighted (light sensor or distance anomalies)
+     - Presence data correlated with fumehood usage
+     - Laboratory and sublaboratory organization
 
 2. **Visualizations**:
-   - Time-series plots of distance and sash opening
-   - Light status timeline
-   - Error detection results
-   - Presence overlays showing correlation with fumehood activity
+     - Time-series plots of distance and sash opening
+     - Light status timeline
+     - Error detection results
+     - Presence overlays showing correlation with fumehood activity
 
 ## Key Features
 
