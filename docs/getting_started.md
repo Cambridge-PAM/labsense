@@ -21,7 +21,10 @@ Before running dashboard scripts, complete these pages in order:
 	- hazardous waste extraction, HP-code allocation, and waste dashboard outputs
 5. [Water Monitoring Setup](water.md)
 	- water sensor wiring, collection script behavior, and dashboard dependencies
-6. [Electricity Monitoring](electricity.md)
+6. [Fumehood Monitoring Setup](fumehood_monitoring.md)
+	- distance and light sensor configuration on Raspberry Pi
+	- sash opening calibration and dashboard generation
+7. [Electricity Monitoring](electricity.md)
 	- emonPi2/emonCMS data collection and idle baseline methodology
 
 The `Run Core Dashboards` commands below assume these setup steps are already complete.
@@ -57,6 +60,7 @@ Use these docs to confirm values before running pipelines:
 - [ChemInventory Setup and Pipeline](cheminventory.md) for `CHEMINVENTORY_CONNECTION_STRING` and ChemInventory sync requirements.
 - [Waste Generation Pipeline](waste.md) for waste input file expectations and output/dashboard configuration.
 - [Water Monitoring Setup](water.md) for water sensor pipeline configuration and MQTT payload path.
+- [Fumehood Monitoring Setup](fumehood_monitoring.md) for fumehood sensor configuration and MQTT topics.
 - [Electricity Monitoring](electricity.md) for emonCMS API retrieval and daily idle-baseline calculation assumptions.
 
 Typical values include:

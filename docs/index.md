@@ -37,6 +37,7 @@ LabSense combines multiple data pipelines:
 - See [Waste Generation](waste.md) for hazardous waste extraction, HP-code allocation, and dashboard outputs.
 - See [LabSense Sensors](labsense_sensors.md) for sensor installation and Raspberry Pi setup.
 - See [Water Monitoring](water.md) for details of water-focused scripts and outputs.
+- See [Fumehood Monitoring](fumehood_monitoring.md) for sash position tracking, sensor configuration, and dashboard generation.
 
 !!! note
     This project is under active development, and documentation will continue to expand.
