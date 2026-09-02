@@ -302,13 +302,13 @@ def create_plots(
         ax.legend(loc="upper right")
         if weekly_view:
             # Reduce tick density for multi-day spans to avoid overlap.
-            ax.xaxis.set_major_locator(mdates.HourLocator(interval=6))
+            ax.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=14))
             ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
             ax.tick_params(axis="x", labelsize=11)
             ax.tick_params(axis="y", labelsize=11)
             plt.xticks(rotation=60, ha="right")
         else:
-            ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            ax.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=24))
             ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
             plt.xticks(rotation=45, ha="right")
 
@@ -856,7 +856,7 @@ def create_plots(
                 ax_delta.set_xlabel("Time", fontsize=12)
                 ax_delta.grid(True, alpha=0.3)
                 ax_delta.legend(loc="upper left")
-                ax_delta.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+                ax_delta.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=12))
                 ax_delta.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
                 plt.xticks(rotation=45, ha="right")
 
